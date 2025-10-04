@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "209384219289",
+    "project_id": "unigo2-c8efd",
+    "storage_bucket": "unigo2-c8efd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:209384219289:android:81bb6a7d05470e58094e08",
+        "android_client_info": {
+          "package_name": "com.example.flutter_ui"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDhyIB4J3N2lZRZi0E9JGoUM1Snu-nx5GM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

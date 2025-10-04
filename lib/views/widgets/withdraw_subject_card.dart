@@ -1,0 +1,80 @@
+import 'package:flutter/material.dart';
+import '../../models/subject_model.dart';
+
+class WithdrawSubjectCard extends StatelessWidget {
+  final Subject subject;
+  final bool isWithdrawn;
+  final VoidCallback? onWithdraw;
+
+  const WithdrawSubjectCard({
+    super.key,
+    required this.subject,
+    this.isWithdrawn = false,
+    this.onWithdraw,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 40,
+            decoration: BoxDecoration(
+              color: subject.color,
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  subject.name,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                Text(
+                  "${subject.credits} credits",
+                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                ),
+              ],
+            ),
+          ),
+
+          // Right action button
+          isWithdrawn
+              ? const Icon(Icons.lock, color: Colors.grey)
+              : IconButton(
+                  icon: const Icon(
+                    Icons.remove_circle,
+                    color: Colors.red,
+                    size: 28,
+                  ),
+                  onPressed: onWithdraw,
+                ),
+        ],
+      ),
+    );
+  }
+}
