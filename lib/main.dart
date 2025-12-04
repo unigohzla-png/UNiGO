@@ -11,6 +11,7 @@ import 'views/pages/withdraw_courses_page.dart';
 import 'views/pages/print_schedule_page.dart';
 import 'views/pages/inquiry_subjects_page.dart';
 import 'views/pages/academic_plan_page.dart';
+import 'views/pages/course_page.dart';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -41,6 +42,18 @@ class MyApp extends StatelessWidget {
         '/print-schedule': (context) => const PrintSchedulePage(),
         '/inquiry-subjects': (context) => const InquirySubjectsPage(),
         '/academic-plan': (context) => const AcademicPlanPage(),
+        '/course': (context) {
+          final args =
+              ModalRoute.of(context)!.settings.arguments
+                  as Map<String, dynamic>?;
+          final title = args != null && args['title'] != null
+              ? args['title'] as String
+              : 'Course';
+          final asset = args != null && args['asset'] != null
+              ? args['asset'] as String
+              : '';
+          return CoursePage(title: title, asset: asset);
+        },
       },
     );
   }
@@ -88,20 +101,20 @@ class _MainScaffoldState extends State<MainScaffold> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Colors.white.withValues(alpha: 0.25),
-                          Colors.white.withValues(alpha: 0.08),
+                          Colors.white.withOpacity(0.25),
+                          Colors.white.withOpacity(0.08),
                         ],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(40),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.6),
+                        color: Colors.white.withOpacity(0.6),
                         width: 1.4,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
+                          color: Colors.black.withOpacity(0.1),
                           blurRadius: 20,
                           offset: const Offset(0, 6),
                         ),
@@ -148,4 +161,3 @@ class _MainScaffoldState extends State<MainScaffold> {
     );
   }
 }
-//blah blah

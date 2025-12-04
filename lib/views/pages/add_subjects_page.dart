@@ -5,7 +5,10 @@ import '../../models/subject_model.dart';
 import '../widgets/glass_appbar.dart';
 
 class AddSubjectsPage extends StatelessWidget {
-  const AddSubjectsPage({super.key});
+  /// If not null, we are *replacing* this course instead of just adding.
+  final Subject? subjectToReplace;
+
+  const AddSubjectsPage({super.key, this.subjectToReplace});
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +23,12 @@ class AddSubjectsPage extends StatelessWidget {
             itemCount: controller.availableSubjects.length,
             itemBuilder: (context, index) {
               final subject = controller.availableSubjects[index];
-              return _subjectCard(context, controller, subject);
+              return _subjectCard(
+                context,
+                controller,
+                subject,
+                subjectToReplace,
+              );
             },
           ),
         );
@@ -32,17 +40,18 @@ class AddSubjectsPage extends StatelessWidget {
     BuildContext context,
     RegisterCoursesController controller,
     Subject subject,
+    Subject? subjectToReplace,
   ) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.4),
+        color: Colors.white.withOpacity(0.4),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+        border: Border.all(color: Colors.white.withOpacity(0.5)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 6,
             offset: const Offset(0, 3),
           ),
@@ -60,7 +69,6 @@ class AddSubjectsPage extends StatelessWidget {
           ),
           const SizedBox(width: 12),
 
-          // Subject details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -83,8 +91,43 @@ class AddSubjectsPage extends StatelessWidget {
 
           IconButton(
             icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28),
-            onPressed: () {
-              controller.addSubject(subject);
+            onPressed: () async {
+              String? error;
+
+              if (subjectToReplace != null) {
+                // switch mode
+                error = await controller.replaceSubject(
+                  subjectToReplace,
+                  subject,
+                );
+              } else {
+                // normal add mode
+                error = await controller.addSubject(subject);
+              }
+
+              if (error != null) {
+                // 🔹 show warning popup instead of closing the page
+                // You can use dialog or bottom sheet; here we use a simple dialog.
+                // (Keep it simple and clear.)
+                // ignore: use_build_context_synchronously
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Cannot register course'),
+                    content: Text('error'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                );
+                return;
+              }
+
+              // Success → close AddSubjectsPage
+              // ignore: use_build_context_synchronously
               Navigator.pop(context);
             },
           ),

@@ -35,10 +35,10 @@ class AbsencesPage extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(20),
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black12.withValues(alpha: 0.1),
+                        color: Colors.black12.withOpacity(0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 4),
                       ),

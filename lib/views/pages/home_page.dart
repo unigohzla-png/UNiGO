@@ -29,6 +29,20 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _loadStudentName();
     _loadGpa();
+    // listen to controller changes so UI rebuilds when courses load
+    controller.addListener(_onControllerChanged);
+    controller.loadEnrolledCourses();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    controller.dispose();
+    super.dispose();
   }
 
   Future<void> _loadGpa() async {
@@ -120,7 +134,16 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: 16),
 
-            isGrid ? _buildGridView() : _buildListView(),
+            // show loading indicator while courses are loading
+            if (controller.loadingCourses)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else
+              (isGrid ? _buildGridView() : _buildListView()),
           ],
         ),
       ),
@@ -184,12 +207,42 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
+        // determine GPA color band
+        double? gpaNum;
+        if (gpa != null) {
+          try {
+            gpaNum = double.parse(gpa!);
+          } catch (_) {
+            gpaNum = null;
+          }
+        }
+
+        Color? gpaColor;
+        if (gpaNum == null) {
+          gpaColor = null; // default gradient
+        } else if (gpaNum < 2.0) {
+          gpaColor = Colors.redAccent.withOpacity(0.9); // poor
+        } else if (gpaNum < 2.5) {
+          gpaColor = const Color.fromARGB(
+            255,
+            253,
+            152,
+            19,
+          ).withOpacity(0.9); // accepted
+        } else if (gpaNum < 3.0) {
+          gpaColor = Colors.amber.withOpacity(0.9); // good
+        } else if (gpaNum < 3.65) {
+          gpaColor = Colors.lightGreen.withOpacity(0.9); // very good
+        } else {
+          gpaColor = Colors.green.withOpacity(0.9); // excellent
+        }
+
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const _StatCard(value: "82%", label: "Completion Rate"),
             const _StatCard(value: "120", label: "Completed Hours"),
-            _StatCard(value: gpa ?? '3.8', label: "GPA"),
+            _StatCard(value: gpa ?? '3.8', label: "GPA", valueColor: gpaColor),
           ],
         );
       },
@@ -224,6 +277,7 @@ class _HomePageState extends State<HomePage> {
         return FolderCard(
           title: course["title"]!,
           assetPath: course["asset"]!,
+          isWithdrawn: course["isWithdrawn"] == '1',
           isListView: true,
         );
       }).toList(),
@@ -234,59 +288,62 @@ class _HomePageState extends State<HomePage> {
 class _StatCard extends StatelessWidget {
   final String value;
   final String label;
+  final Color? valueColor;
 
-  const _StatCard({required this.value, required this.label});
+  const _StatCard({required this.value, required this.label, this.valueColor});
 
   @override
   Widget build(BuildContext context) {
+    final BorderRadius radius = BorderRadius.circular(24);
     return Container(
       width: 100,
       height: 90,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: LinearGradient(
-          colors: [
-            Colors.white.withValues(alpha: 0.35),
-            Colors.white.withValues(alpha: 0.15),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        borderRadius: radius,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: radius,
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black,
-                ),
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0x59FFFFFF), Color(0x26FFFFFF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(height: 6),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.black54,
-                  letterSpacing: 0.3,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: valueColor ?? Colors.black,
+                  ),
                 ),
-                textAlign: TextAlign.center,
-              ),
-            ],
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.black54,
+                    letterSpacing: 0.3,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),

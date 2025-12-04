@@ -34,10 +34,10 @@ class CompletedCoursesPage extends StatelessWidget {
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(18),
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black12.withValues(alpha: 0.08),
+                        color: Colors.black12.withOpacity(0.08),
                         blurRadius: 6,
                         offset: const Offset(0, 3),
                       ),

@@ -102,7 +102,7 @@ class _CalendarScaffold extends StatelessWidget {
                     Container(
                       width: 1.5,
                       margin: const EdgeInsets.symmetric(vertical: 44),
-                      color: Colors.black.withValues(alpha: 0.08),
+                      color: Colors.black.withOpacity(0.08),
                     ),
 
                     // RIGHT: Calendar
@@ -511,7 +511,7 @@ void _showAddReminderDialog(CalendarController controller) {
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
           child: AlertDialog(
-            backgroundColor: Colors.white.withValues(alpha: 0.85),
+            backgroundColor: Colors.white.withOpacity(0.85),
             title: const Text(
               "Add Reminder",
               style: TextStyle(fontFamily: "AnekTelugu"),
@@ -580,9 +580,7 @@ Widget _bigTab(String tab, CalendarController controller) {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
         decoration: BoxDecoration(
-          color: isActive
-              ? Colors.white.withValues(alpha: 0.35)
-              : Colors.transparent,
+          color: isActive ? Colors.white.withOpacity(0.35) : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
         ),
         child: Text(
@@ -611,9 +609,7 @@ Widget _filterListItem(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
       decoration: BoxDecoration(
-        color: isActive
-            ? Colors.white.withValues(alpha: 0.35)
-            : Colors.transparent,
+        color: isActive ? Colors.white.withOpacity(0.35) : Colors.transparent,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
@@ -651,17 +647,14 @@ Widget _glass({required Widget child}) {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Colors.white.withValues(alpha: 0.28),
-              Colors.white.withValues(alpha: 0.12),
+              Colors.white.withOpacity(0.28),
+              Colors.white.withOpacity(0.12),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.45),
-            width: 1,
-          ),
+          border: Border.all(color: Colors.white.withOpacity(0.45), width: 1),
         ),
         child: child,
       ),
@@ -679,7 +672,7 @@ Widget _glassIconButton({
     child: BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
       child: Material(
-        color: Colors.white.withValues(alpha: 0.2),
+        color: Colors.white.withOpacity(0.2),
         child: InkWell(
           onTap: onTap,
           child: SizedBox(

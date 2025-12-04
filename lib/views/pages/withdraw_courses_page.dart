@@ -5,13 +5,33 @@ import '../../models/subject_model.dart';
 import '../widgets/glass_appbar.dart';
 import '../widgets/withdraw_subject_card.dart';
 
-class WithdrawCoursesPage extends StatelessWidget {
+class WithdrawCoursesPage extends StatefulWidget {
   const WithdrawCoursesPage({super.key});
 
   @override
+  State<WithdrawCoursesPage> createState() => _WithdrawCoursesPageState();
+}
+
+class _WithdrawCoursesPageState extends State<WithdrawCoursesPage> {
+  late WithdrawCoursesController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = WithdrawCoursesController();
+    controller.loadRegisteredCourses();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => WithdrawCoursesController(),
+    return ChangeNotifierProvider<WithdrawCoursesController>.value(
+      value: controller,
       child: Consumer<WithdrawCoursesController>(
         builder: (context, controller, _) {
           return Scaffold(
@@ -19,55 +39,59 @@ class WithdrawCoursesPage extends StatelessWidget {
             appBar: const GlassAppBar(title: "Withdraw Courses"),
             body: Padding(
               padding: const EdgeInsets.all(16),
-              child: ListView(
-                children: [
-                  const Text(
-                    "Registered Courses",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (controller.registeredSubjects.isEmpty)
-                    const Text(
-                      "No registered courses.",
-                      style: TextStyle(color: Colors.black54),
-                    )
-                  else
-                    ...controller.registeredSubjects.map(
-                      (Subject s) => WithdrawSubjectCard(
-                        subject: s,
-                        onWithdraw: () {
-                          _confirmWithdraw(context, controller, s);
-                        },
-                      ),
-                    ),
+              child: controller.loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : ListView(
+                      children: [
+                        const Text(
+                          "Registered Courses",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (controller.registeredSubjects.isEmpty)
+                          const Text(
+                            "No registered courses.",
+                            style: TextStyle(color: Colors.black54),
+                          )
+                        else
+                          ...controller.registeredSubjects.map(
+                            (Subject s) => WithdrawSubjectCard(
+                              subject: s,
+                              onWithdraw: () {
+                                _confirmWithdraw(context, controller, s);
+                              },
+                            ),
+                          ),
 
-                  const SizedBox(height: 24),
+                        const SizedBox(height: 24),
 
-                  const Text(
-                    "Withdrawn Courses",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.black87,
+                        const Text(
+                          "Withdrawn Courses",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (controller.withdrawnSubjects.isEmpty)
+                          const Text(
+                            "No courses withdrawn yet.",
+                            style: TextStyle(color: Colors.black54),
+                          )
+                        else
+                          ...controller.withdrawnSubjects.map(
+                            (Subject s) => WithdrawSubjectCard(
+                              subject: s,
+                              isWithdrawn: true,
+                            ),
+                          ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (controller.withdrawnSubjects.isEmpty)
-                    const Text(
-                      "No courses withdrawn yet.",
-                      style: TextStyle(color: Colors.black54),
-                    )
-                  else
-                    ...controller.withdrawnSubjects.map(
-                      (Subject s) =>
-                          WithdrawSubjectCard(subject: s, isWithdrawn: true),
-                    ),
-                ],
-              ),
             ),
           );
         },
@@ -100,8 +124,9 @@ class WithdrawCoursesPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            onPressed: () {
-              controller.withdrawSubject(subject);
+            onPressed: () async {
+              await controller.withdrawSubject(subject);
+              // after withdraw, refresh local lists are already updated in controller
               Navigator.pop(ctx);
             },
             child: const Text("Confirm"),

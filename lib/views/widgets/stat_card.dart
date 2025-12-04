@@ -16,15 +16,15 @@ class StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
           colors: [
-            Colors.white.withValues(alpha: 0.35),
-            Colors.white.withValues(alpha: 0.15),
+            Colors.white.withOpacity(0.35),
+            Colors.white.withOpacity(0.15),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -63,3 +63,4 @@ class StatCard extends StatelessWidget {
     );
   }
 }
+

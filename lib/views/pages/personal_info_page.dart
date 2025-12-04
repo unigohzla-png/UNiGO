@@ -157,20 +157,20 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.white.withValues(alpha: 0.4),
-                    Colors.white.withValues(alpha: 0.1),
+                    Colors.white.withOpacity(0.4),
+                    Colors.white.withOpacity(0.1),
                   ],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.5),
+                  color: Colors.white.withOpacity(0.5),
                   width: 1,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
+                    color: Colors.black.withOpacity(0.05),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -182,7 +182,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                     child: OutlinedButton(
                       onPressed: () => Navigator.pop(context),
                       style: OutlinedButton.styleFrom(
-                        backgroundColor: Colors.white.withValues(alpha: 0.3),
+                        backgroundColor: Colors.white.withOpacity(0.3),
                         side: BorderSide(
                           color: Colors.red.shade400,
                           width: 1.5,
@@ -207,7 +207,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                     child: ElevatedButton(
                       onPressed: _save,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryColor.withValues(alpha: 0.85),
+                        backgroundColor: primaryColor.withOpacity(0.85),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),

@@ -14,7 +14,7 @@ class GlassInfoCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        color: Colors.white.withValues(alpha: 0.2),
+        color: Colors.white.withOpacity(0.2),
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -50,3 +50,4 @@ class GlassInfoCard extends StatelessWidget {
     );
   }
 }
+

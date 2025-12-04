@@ -5,6 +5,7 @@ import '../../controllers/reserve_time_controller.dart';
 import '../../models/reservation_model.dart';
 import '../widgets/glass_card_custom.dart';
 import '../widgets/glass_input_box.dart';
+import '../../services/registration_service.dart';
 
 class ReserveTimePage extends StatelessWidget {
   const ReserveTimePage({super.key});
@@ -69,7 +70,7 @@ class ReserveTimePage extends StatelessWidget {
                         DropdownButtonFormField<String>(
                           decoration: InputDecoration(
                             filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.3),
+                            fillColor: Colors.white.withOpacity(0.3),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide.none,
@@ -98,7 +99,47 @@ class ReserveTimePage extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            onPressed: controller.addReservation,
+                            onPressed: () async {
+                              if (controller.selectedDate == null ||
+                                  controller.selectedTime == null) {
+                                // optional: show a small warning
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Please select date and time first',
+                                    ),
+                                  ),
+                                );
+                                return;
+                              }
+
+                              try {
+                                await RegistrationService.instance
+                                    .reserveFreeSlotForCurrentUser(
+                                      controller.selectedDate!, // DateTime
+                                      controller
+                                          .selectedTime!, // TimeOfDay (whatever your field is called)
+                                    );
+
+                                // optional: feedback
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Time reserved successfully'),
+                                  ),
+                                );
+
+                                // close the page if you want
+                                // ignore: use_build_context_synchronously
+                                Navigator.pop(context);
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Failed to reserve time: $e'),
+                                  ),
+                                );
+                              }
+                            },
+
                             icon: const Icon(Icons.save),
                             label: const Text("Save"),
                           ),

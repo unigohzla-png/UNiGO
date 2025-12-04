@@ -59,11 +59,11 @@ class _GlassAppBarState extends State<GlassAppBar> {
                     width: 220,
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.45),
+                      color: Colors.white.withOpacity(0.45),
                       borderRadius: BorderRadius.circular(22),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.06),
+                          color: Colors.black.withOpacity(0.06),
                           blurRadius: 16,
                           offset: const Offset(0, 8),
                         ),
@@ -175,7 +175,7 @@ class _GlassAppBarState extends State<GlassAppBar> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white, width: 1),
-          color: Colors.white.withValues(alpha: 0.25),
+          color: Colors.white.withOpacity(0.25),
         ),
         child: Center(
           child: Icon(icon, color: color ?? Colors.black, size: 20),
@@ -194,7 +194,7 @@ class _GlassAppBarState extends State<GlassAppBar> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.white, width: 1),
-          color: Colors.white.withValues(alpha: 0.25),
+          color: Colors.white.withOpacity(0.25),
         ),
         child: Center(
           child: AnimatedSwitcher(
@@ -216,3 +216,4 @@ class _GlassAppBarState extends State<GlassAppBar> {
     );
   }
 }
+

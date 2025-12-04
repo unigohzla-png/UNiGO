@@ -20,7 +20,7 @@ class RegisterCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          color: Colors.white.withValues(alpha: 0.2),
+          color: Colors.white.withOpacity(0.2),
           boxShadow: const [
             BoxShadow(
               color: Colors.black12,
@@ -53,3 +53,4 @@ class RegisterCard extends StatelessWidget {
     );
   }
 }
+

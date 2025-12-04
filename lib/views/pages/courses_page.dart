@@ -21,6 +21,24 @@ class _CoursesPageState extends State<CoursesPage> {
   bool showCourses = false;
 
   @override
+  void initState() {
+    super.initState();
+    controller.addListener(_onControllerChanged);
+    controller.loadUserCourses();
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    controller.removeListener(_onControllerChanged);
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
@@ -66,7 +84,7 @@ class _CoursesPageState extends State<CoursesPage> {
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected
-              ? Colors.white.withValues(alpha: 0.8)
+              ? Colors.white.withOpacity(0.8)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(40),
         ),
@@ -98,31 +116,57 @@ class _CoursesPageState extends State<CoursesPage> {
         ),
 
         if (showCourses) ...[
-          Column(
-            children: controller.currentCourses.map((course) {
-              return Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 6,
-                      horizontal: 4,
+          if (controller.loadingCourses)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (controller.currentCourses.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'No current courses found',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            Column(
+              children: controller.currentCourses.map((course) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 4,
+                      ),
+                      child: GestureDetector(
+                        onTap: () {
+                          Navigator.pushNamed(
+                            context,
+                            '/course',
+                            arguments: {
+                              'title': course['title']!,
+                              'asset': course['asset']!,
+                            },
+                          );
+                        },
+                        child: CourseItem(
+                          title: course["title"]!,
+                          assetPath: course["asset"]!,
+                        ),
+                      ),
                     ),
-                    child: CourseItem(
-                      title: course["title"]!,
-                      assetPath: course["asset"]!,
+                    const Divider(
+                      height: 1,
+                      thickness: 0.8,
+                      indent: 40,
+                      endIndent: 12,
+                      color: Colors.black12,
                     ),
-                  ),
-                  const Divider(
-                    height: 1,
-                    thickness: 0.8,
-                    indent: 40,
-                    endIndent: 12,
-                    color: Colors.black12,
-                  ),
-                ],
-              );
-            }).toList(),
-          ),
+                  ],
+                );
+              }).toList(),
+            ),
           const SizedBox(height: 20),
         ],
 

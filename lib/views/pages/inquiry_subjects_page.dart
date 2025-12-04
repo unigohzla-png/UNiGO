@@ -25,7 +25,7 @@ class InquirySubjectsPage extends StatelessWidget {
                       hintText: "Search subjects...",
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.3),
+                      fillColor: Colors.white.withOpacity(0.3),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
