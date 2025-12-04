@@ -12,6 +12,7 @@ class WithdrawCoursesController extends ChangeNotifier {
   Future<void> loadRegisteredCourses() async {
     loading = true;
     notifyListeners();
+
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       loading = false;
@@ -24,18 +25,27 @@ class WithdrawCoursesController extends ChangeNotifier {
           .collection('users')
           .doc(uid)
           .get();
+
       final data = userDoc.data();
       if (data == null) return;
 
+      registeredSubjects = [];
+      withdrawnSubjects = [];
+
+      // ------------------------------
+      // LOAD ENROLLED COURSES
+      // ------------------------------
       final enrolled = data['enrolledCourses'];
       if (enrolled is List && enrolled.isNotEmpty) {
         final List<Subject> list = [];
+
         for (final code in enrolled) {
           try {
             final courseDoc = await FirebaseFirestore.instance
                 .collection('courses')
                 .doc(code.toString())
                 .get();
+
             if (courseDoc.exists) {
               final c = courseDoc.data()!;
               list.add(
@@ -53,19 +63,24 @@ class WithdrawCoursesController extends ChangeNotifier {
             }
           } catch (_) {}
         }
+
         registeredSubjects = list;
       }
 
-      // Load withdrawn courses (so withdrawnSubjects persist across sessions)
+      // ------------------------------
+      // LOAD WITHDRAWN COURSES
+      // ------------------------------
       final withdrawn = data['withdrawnCourses'];
       if (withdrawn is List && withdrawn.isNotEmpty) {
         final List<Subject> wlist = [];
+
         for (final code in withdrawn) {
           try {
             final courseDoc = await FirebaseFirestore.instance
                 .collection('courses')
                 .doc(code.toString())
                 .get();
+
             if (courseDoc.exists) {
               final c = courseDoc.data()!;
               wlist.add(
@@ -81,7 +96,6 @@ class WithdrawCoursesController extends ChangeNotifier {
                 ),
               );
             } else {
-              // fallback to code-based subject if course doc missing
               wlist.add(
                 Subject(
                   name: code.toString(),
@@ -94,41 +108,54 @@ class WithdrawCoursesController extends ChangeNotifier {
           } catch (_) {}
         }
 
-        // Ensure withdrawnSubjects doesn't duplicate any currently registered subject
-        final withdrawnCodes = wlist.map((s) => s.code).toSet();
-        registeredSubjects.removeWhere(
-          (s) => s.code != null && withdrawnCodes.contains(s.code),
-        );
-
         withdrawnSubjects = wlist;
       }
+
+      // ------------------------------
+      // CLEAN UP DUPLICATES
+      // ------------------------------
+      final withdrawnCodes = withdrawnSubjects.map((s) => s.code).toSet();
+
+      // remove any registered course that has been withdrawn
+      registeredSubjects.removeWhere((s) => withdrawnCodes.contains(s.code));
     } finally {
       loading = false;
       notifyListeners();
     }
   }
 
+  // --------------------------------------------------------
+  // ATOMIC WITHDRAW FUNCTION
+  // --------------------------------------------------------
   Future<void> withdrawSubject(Subject subject) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    if (subject.code == null) return;
+    if (uid == null || subject.code == null) return;
 
-    // remove from enrolledCourses array in Firestore
+    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      // One atomic update
+      await userRef.update({
         'enrolledCourses': FieldValue.arrayRemove([subject.code]),
-      });
-      // also add to withdrawnCourses array so HomePage can mark it
-      await FirebaseFirestore.instance.collection('users').doc(uid).set({
         'withdrawnCourses': FieldValue.arrayUnion([subject.code]),
-      }, SetOptions(merge: true));
-    } catch (_) {
-      // ignore Firestore update errors for now
-    }
+      });
 
-    // update local lists
-    registeredSubjects.removeWhere((s) => s.code == subject.code);
-    withdrawnSubjects.add(subject);
-    notifyListeners();
+      // Update local state
+      registeredSubjects.removeWhere((s) => s.code == subject.code);
+
+      // add withdrawn card with grey color
+      withdrawnSubjects.add(
+        Subject(
+          name: subject.name,
+          credits: subject.credits,
+          color: Colors.grey,
+          code: subject.code,
+        ),
+      );
+
+      notifyListeners();
+    } catch (e) {
+      print("Withdraw error: $e");
+    }
   }
 }

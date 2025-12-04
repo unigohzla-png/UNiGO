@@ -1,173 +1,202 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/plan_section.dart';
 
-class PlanSectionCard extends StatelessWidget {
+class PlanSectionCard extends StatefulWidget {
   final PlanSection section;
 
   const PlanSectionCard({super.key, required this.section});
 
   @override
+  State<PlanSectionCard> createState() => _PlanSectionCardState();
+}
+
+class _PlanSectionCardState extends State<PlanSectionCard> {
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.02),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        leading: Container(
-          width: 6,
-          height: 48,
-          decoration: BoxDecoration(
-            color: section.indicatorColor,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              section.title,
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              section.subtitle,
-              style: const TextStyle(color: Colors.black54, fontSize: 12),
-            ),
-          ],
-        ),
-        children: [
-          if (section.loading)
-            const Padding(
-              padding: EdgeInsets.all(12.0),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (section.courses.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(12.0),
-              child: Text(
-                'No courses available',
-                style: TextStyle(color: Colors.grey),
-              ),
-            )
-          else
-            ...section.courses.map((c) {
-              final title = c['name'] ?? c['title'] ?? 'Course';
-              final code = c['id'] ?? '';
-              final credits = c['credits']?.toString() ?? '';
+    final section = widget.section;
 
-              // normalize prerequisites: could be list of ids or empty/['0']
-              final rawPrereqs =
-                  c['pre_requisites'] ??
-                  c['prePrerequisite'] ??
-                  c['pre_Requisites'] ??
-                  [];
-              List<String> prereqIds = [];
-              if (rawPrereqs is List) {
-                for (final v in rawPrereqs) {
-                  final s = v?.toString() ?? '';
-                  if (s.isNotEmpty && s != '0') prereqIds.add(s);
-                }
-              }
-
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
+    return Column(
+      children: [
+        // ---------- HEADER ----------
+        InkWell(
+          onTap: () {
+            setState(() {
+              section.isExpanded = !section.isExpanded;
+            });
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 3),
                 ),
-                title: Text(title, textAlign: TextAlign.right),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(code, style: const TextStyle(color: Colors.black54)),
-                  ],
-                ),
-                subtitle: Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    '$credits credits',
-                    style: const TextStyle(color: Colors.black54),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: section.indicatorColor,
+                    borderRadius: BorderRadius.circular(4),
                   ),
                 ),
-                leading: prereqIds.isEmpty
-                    ? const SizedBox(width: 40)
-                    : IconButton(
-                        onPressed: () async {
-                          // fetch prerequisite course names
-                          final names = <String>[];
-                          for (final pid in prereqIds) {
-                            try {
-                              final doc = await FirebaseFirestore.instance
-                                  .collection('courses')
-                                  .doc(pid)
-                                  .get();
-                              if (doc.exists) {
-                                final data = doc.data();
-                                if (data != null) {
-                                  names.add(data['name']?.toString() ?? pid);
-                                } else {
-                                  names.add(pid);
-                                }
-                              } else {
-                                names.add(pid);
-                              }
-                            } catch (_) {
-                              names.add(pid);
-                            }
-                          }
-
-                          // show dialog with prerequisite names
-                          if (!Navigator.canPop(context)) {
-                            // still show dialog even if navigator can't pop; use showDialog directly
-                          }
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Prerequisites'),
-                              content: SizedBox(
-                                width: double.maxFinite,
-                                child: ListView.builder(
-                                  shrinkWrap: true,
-                                  itemCount: names.length,
-                                  itemBuilder: (_, i) => ListTile(
-                                    title: Text(
-                                      names[i],
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(ctx).pop(),
-                                  child: const Text('Close'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                        icon: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.blue,
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Icon(
-                            Icons.search,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        section.title,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black,
                         ),
                       ),
-              );
-            }),
-        ],
-      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        section.subtitle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                section.loading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        section.isExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        color: Colors.black54,
+                      ),
+              ],
+            ),
+          ),
+        ),
+
+        // ---------- EXPANDED COURSE LIST ----------
+        if (section.isExpanded)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 24,
+              right: 8,
+              bottom: 8,
+              top: 0,
+            ),
+            child: Column(
+              children: section.courses.map((course) {
+                final String name =
+                    course['name']?.toString() ?? 'Unknown course';
+                final String code =
+                    course['code']?.toString() ??
+                    course['id']?.toString() ??
+                    '';
+                final int credits = course['credits'] is int
+                    ? course['credits'] as int
+                    : 0;
+
+                final bool isCompleted = course['isCompleted'] == true;
+                final bool isEnrolled = course['isEnrolled'] == true;
+                final String? grade = course['grade'] != null
+                    ? course['grade'].toString()
+                    : null;
+
+                Color nameColor = Colors.black;
+                FontWeight nameWeight = FontWeight.w500;
+                IconData? statusIcon;
+                Color? statusColor;
+
+                if (isCompleted) {
+                  nameColor = Colors.green.shade700;
+                  nameWeight = FontWeight.w600;
+                  statusIcon = Icons.check_circle;
+                  statusColor = Colors.green;
+                } else if (isEnrolled) {
+                  nameColor = Colors.blue.shade700;
+                  nameWeight = FontWeight.w600;
+                  statusIcon = Icons.play_circle_fill;
+                  statusColor = Colors.blue;
+                }
+
+                return Container(
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: nameWeight,
+                                color: nameColor,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '$credits credits',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black45,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // course code
+                      if (code.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8.0),
+                          child: Text(
+                            code,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black38,
+                            ),
+                          ),
+                        ),
+
+                      // grade + status icon (for completed)
+                      if (isCompleted && grade != null && grade.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4.0),
+                          child: Text(
+                            grade,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.green,
+                            ),
+                          ),
+                        ),
+
+                      if (statusIcon != null)
+                        Icon(statusIcon, size: 18, color: statusColor),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+      ],
     );
   }
 }
-

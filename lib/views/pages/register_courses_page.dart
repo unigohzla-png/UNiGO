@@ -21,8 +21,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
   void initState() {
     super.initState();
     // Load global + user window ONCE when the page is created
-    _loadRegistrationState =
-        RegistrationService.instance.reloadFromFirestore();
+    _loadRegistrationState = RegistrationService.instance.reloadFromFirestore();
   }
 
   @override
@@ -48,18 +47,18 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
               final service = RegistrationService.instance;
               final now = DateTime.now();
 
-              final canAccess =
-                  service.canUserRegisterNow('ignored'); // param not used
+              final canAccess = service.canUserRegisterNow(
+                'ignored',
+              ); // param not used
 
               // Before 20:00 and inside a personal slot → tie timer to slot end
-              final useSlotWindow = now.hour < 20 &&
+              final useSlotWindow =
+                  now.hour < 20 &&
                   service.assignedEndAt != null &&
                   now.isBefore(service.assignedEndAt!);
 
               if (canAccess) {
-                controller.ensureTimerStarted(
-                  useSlotWindow: useSlotWindow,
-                );
+                controller.ensureTimerStarted(useSlotWindow: useSlotWindow);
               }
 
               return Scaffold(
@@ -88,11 +87,24 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                             color: Colors.black,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 8),
                       ] else ...[
                         const SizedBox(height: 8),
-                        const SizedBox(height: 24),
                       ],
+
+                      // ---------- Credits summary ----------
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'Total: ${controller.totalRegisteredCredits} / ${RegisterCoursesController.maxCredits} credits',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
 
                       // ---------- Registered subjects list ----------
                       Expanded(
@@ -104,8 +116,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                                 ),
                               )
                             : ListView.builder(
-                                itemCount:
-                                    controller.registeredSubjects.length,
+                                itemCount: controller.registeredSubjects.length,
                                 itemBuilder: (context, index) {
                                   final subject =
                                       controller.registeredSubjects[index];
@@ -173,6 +184,34 @@ Widget _subjectCard(
   RegisterCoursesController controller,
   Subject subject,
 ) {
+  final sec = subject.selectedSection;
+
+  final hasRealSection = sec != null && sec.id.isNotEmpty; // basic sanity check
+
+  final String courseTitle = subject.name;
+
+  final String sectionLabel = hasRealSection ? 'Sec ${sec!.id}' : 'No section';
+  final String doctorLabel = hasRealSection
+      ? (sec.doctorName.isEmpty ? 'Doctor: TBA' : 'Doctor: ${sec.doctorName}')
+      : '';
+
+  String scheduleLabel = '';
+  if (hasRealSection) {
+    final days = sec.days.join(', ');
+    final time = (sec.startTime.isNotEmpty && sec.endTime.isNotEmpty)
+        ? '${sec.startTime}–${sec.endTime}'
+        : '';
+    if (days.isNotEmpty && time.isNotEmpty) {
+      scheduleLabel = '$days • $time';
+    } else if (days.isNotEmpty) {
+      scheduleLabel = days;
+    } else if (time.isNotEmpty) {
+      scheduleLabel = time;
+    }
+  }
+
+  final String creditsLabel = '${subject.credits} credits';
+
   return Container(
     margin: const EdgeInsets.symmetric(vertical: 6),
     padding: const EdgeInsets.all(16),
@@ -193,7 +232,7 @@ Widget _subjectCard(
         // Color stripe
         Container(
           width: 6,
-          height: 40,
+          height: 48,
           decoration: BoxDecoration(
             color: subject.color,
             borderRadius: BorderRadius.circular(4),
@@ -201,25 +240,70 @@ Widget _subjectCard(
         ),
         const SizedBox(width: 12),
 
-        // Subject name + credits
+        // Subject + section info
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                subject.name,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black,
-                ),
+              // Course name + section pill
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Text(
+                      courseTitle,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black,
+                      ),
+                    ),
+                  ),
+                  if (hasRealSection)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        sectionLabel,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                ],
               ),
-              Text(
-                '${subject.credits} credits',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.black54,
+              const SizedBox(height: 4),
+
+              // Doctor
+              if (doctorLabel.isNotEmpty) ...[
+                Text(
+                  doctorLabel,
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
                 ),
+                const SizedBox(height: 2),
+              ],
+
+              // Days + time
+              if (scheduleLabel.isNotEmpty) ...[
+                Text(
+                  scheduleLabel,
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                ),
+                const SizedBox(height: 2),
+              ],
+
+              // Credits
+              Text(
+                creditsLabel,
+                style: const TextStyle(fontSize: 12, color: Colors.black45),
               ),
             ],
           ),
@@ -243,20 +327,14 @@ Widget _subjectCard(
             ),
             IconButton(
               tooltip: 'Switch',
-              icon: const Icon(
-                Icons.swap_horiz,
-                size: 22,
-                color: Colors.blue,
-              ),
+              icon: const Icon(Icons.swap_horiz, size: 22, color: Colors.blue),
               onPressed: () {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (_) => ChangeNotifierProvider.value(
                       value: controller,
-                      child: AddSubjectsPage(
-                        subjectToReplace: subject,
-                      ),
+                      child: AddSubjectsPage(subjectToReplace: subject),
                     ),
                   ),
                 );

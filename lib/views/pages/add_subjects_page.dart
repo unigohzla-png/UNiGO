@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../controllers/register_courses_controller.dart';
 import '../../models/subject_model.dart';
+import '../../models/course_section.dart';
 import '../widgets/glass_appbar.dart';
+import '../widgets/section_picker_dialog.dart';
 
 class AddSubjectsPage extends StatelessWidget {
   /// If not null, we are *replacing* this course instead of just adding.
@@ -17,7 +20,6 @@ class AddSubjectsPage extends StatelessWidget {
         return Scaffold(
           backgroundColor: Colors.white,
           appBar: const GlassAppBar(title: "Add Subjects"),
-
           body: ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: controller.availableSubjects.length,
@@ -83,7 +85,10 @@ class AddSubjectsPage extends StatelessWidget {
                 ),
                 Text(
                   "${subject.credits} credits",
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black54,
+                  ),
                 ),
               ],
             ),
@@ -95,26 +100,41 @@ class AddSubjectsPage extends StatelessWidget {
               String? error;
 
               if (subjectToReplace != null) {
-                // switch mode
+                // Switch mode (no section handling yet)
                 error = await controller.replaceSubject(
                   subjectToReplace,
                   subject,
                 );
               } else {
-                // normal add mode
-                error = await controller.addSubject(subject);
+                // Normal add mode: pick section if available
+                CourseSection? chosenSection;
+
+                if (subject.sections.isNotEmpty) {
+                  chosenSection = await showDialog<CourseSection>(
+                    context: context,
+                    builder: (_) => SectionPickerDialog(subject: subject),
+                  );
+
+                  // User cancelled dialog
+                  if (chosenSection == null) {
+                    return;
+                  }
+                }
+
+                error = await controller.addSubject(
+                  subject,
+                  section: chosenSection,
+                );
               }
 
               if (error != null) {
-                // 🔹 show warning popup instead of closing the page
-                // You can use dialog or bottom sheet; here we use a simple dialog.
-                // (Keep it simple and clear.)
+                // Show error dialog
                 // ignore: use_build_context_synchronously
                 showDialog(
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('Cannot register course'),
-                    content: Text('error'),
+                    content: Text('Can not add subject)'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),

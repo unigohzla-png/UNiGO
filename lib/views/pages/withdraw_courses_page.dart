@@ -43,15 +43,9 @@ class _WithdrawCoursesPageState extends State<WithdrawCoursesPage> {
                   ? const Center(child: CircularProgressIndicator())
                   : ListView(
                       children: [
-                        const Text(
-                          "Registered Courses",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        _sectionTitle("Registered Courses"),
                         const SizedBox(height: 12),
+
                         if (controller.registeredSubjects.isEmpty)
                           const Text(
                             "No registered courses.",
@@ -61,23 +55,16 @@ class _WithdrawCoursesPageState extends State<WithdrawCoursesPage> {
                           ...controller.registeredSubjects.map(
                             (Subject s) => WithdrawSubjectCard(
                               subject: s,
-                              onWithdraw: () {
-                                _confirmWithdraw(context, controller, s);
-                              },
+                              onWithdraw: () =>
+                                  _confirmWithdraw(context, controller, s),
                             ),
                           ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 32),
 
-                        const Text(
-                          "Withdrawn Courses",
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        _sectionTitle("Withdrawn Courses"),
                         const SizedBox(height: 12),
+
                         if (controller.withdrawnSubjects.isEmpty)
                           const Text(
                             "No courses withdrawn yet.",
@@ -99,6 +86,23 @@ class _WithdrawCoursesPageState extends State<WithdrawCoursesPage> {
     );
   }
 
+  // -------------------------------------
+  // Small cleaner widget for section title
+  // -------------------------------------
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.w700,
+        color: Colors.black87,
+      ),
+    );
+  }
+
+  // -------------------------------------
+  // Confirm withdraw dialog
+  // -------------------------------------
   void _confirmWithdraw(
     BuildContext context,
     WithdrawCoursesController controller,
@@ -126,7 +130,6 @@ class _WithdrawCoursesPageState extends State<WithdrawCoursesPage> {
             ),
             onPressed: () async {
               await controller.withdrawSubject(subject);
-              // after withdraw, refresh local lists are already updated in controller
               Navigator.pop(ctx);
             },
             child: const Text("Confirm"),
