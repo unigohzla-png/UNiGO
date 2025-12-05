@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+// import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
@@ -356,8 +355,8 @@ class _ActionButtons extends StatelessWidget {
   }
 }
 
-void _showError(BuildContext context, String msg) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-}
+// void _showError(BuildContext context, String msg) {
+//   ScaffoldMessenger.of(
+//     context,
+//   ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
+// }

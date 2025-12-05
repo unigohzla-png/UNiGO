@@ -130,11 +130,11 @@ class RegistrationService {
     return true;
   }
 
-  bool _isNowWithinRange(DateTime? start, DateTime? end, DateTime now) {
-    if (start == null || end == null) return false;
-    return (now.isAfter(start) || now.isAtSameMomentAs(start)) &&
-        now.isBefore(end);
-  }
+  // bool _isNowWithinRange(DateTime? start, DateTime? end, DateTime now) {
+  //   if (start == null || end == null) return false;
+  //   return (now.isAfter(start) || now.isAtSameMomentAs(start)) &&
+  //       now.isBefore(end);
+  // }
 
   /// Final rule:
   ///   - must be inside global window
