@@ -1,5 +1,11 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
+import 'firebase_options.dart';
+
+// student views
 import 'views/pages/login_page.dart';
 import 'views/pages/home_page.dart';
 import 'views/pages/courses_page.dart';
@@ -13,12 +19,14 @@ import 'views/pages/inquiry_subjects_page.dart';
 import 'views/pages/academic_plan_page.dart';
 import 'views/pages/course_page.dart';
 
-import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
+// admin + roles
+import 'models/user_role.dart';
+import 'services/role_service.dart';
+import 'views/admin/admin_root_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
@@ -32,10 +40,14 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'University IT Student',
+      navigatorKey: navigatorKey,
       initialRoute: '/',
       routes: {
-        '/': (context) => const LoginPage(), // start at login
-        '/home': (context) => const MainScaffold(), // main scaffold after login
+        // both "/" and "/home" go through the auth+role gate
+        '/': (context) => const AuthRoleGate(),
+        '/home': (context) => const AuthRoleGate(),
+
+        // student-only sub-pages
         '/reserve-time': (context) => const ReserveTimePage(),
         '/register-courses': (context) => const RegisterCoursesPage(),
         '/withdraw-courses': (context) => const WithdrawCoursesPage(),
@@ -59,6 +71,53 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/// This widget decides which root to show:
+/// - not logged in  -> LoginPage
+/// - student        -> MainScaffold (your existing bottom-nav)
+/// - admin/super    -> AdminRootPage
+class AuthRoleGate extends StatelessWidget {
+  const AuthRoleGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snap) {
+        // not logged in -> login screen
+        if (!snap.hasData) {
+          return const LoginPage();
+        }
+
+        // logged in -> check role
+        return FutureBuilder<UserRole>(
+          future: RoleService().getCurrentUserRole(),
+          builder: (context, roleSnap) {
+            if (roleSnap.hasError) {
+              // if anything goes wrong, safest fallback is student app
+              return const MainScaffold();
+            }
+
+            if (!roleSnap.hasData) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final role = roleSnap.data!;
+            switch (role) {
+              case UserRole.student:
+                return const MainScaffold();
+              case UserRole.admin:
+              case UserRole.superAdmin:
+                return AdminRootPage(role: role);
+            }
+          },
+        );
+      },
+    );
+  }
+}
+
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
 
@@ -69,7 +128,7 @@ class MainScaffold extends StatefulWidget {
 class _MainScaffoldState extends State<MainScaffold> {
   int selectedIndex = 0;
 
-  final List<Widget> _pages = [
+  final List<Widget> _pages = const [
     HomePage(),
     CoursesPage(),
     CalendarPage(),
