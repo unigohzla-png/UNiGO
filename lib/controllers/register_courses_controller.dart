@@ -104,7 +104,7 @@ class RegisterCoursesController extends ChangeNotifier {
               .whereType<Map>()
               .map(
                 (m) =>
-                    CourseSection.fromMap(Map<String, dynamic>.from(m as Map)),
+                    CourseSection.fromMap(Map<String, dynamic>.from(m)),
               )
               .toList();
         }

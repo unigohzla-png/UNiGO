@@ -19,19 +19,47 @@ class AddSubjectsPage extends StatelessWidget {
       builder: (context, controller, _) {
         return Scaffold(
           backgroundColor: Colors.white,
-          appBar: const GlassAppBar(title: "Add Subjects"),
-          body: ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: controller.availableSubjects.length,
-            itemBuilder: (context, index) {
-              final subject = controller.availableSubjects[index];
-              return _subjectCard(
-                context,
-                controller,
-                subject,
-                subjectToReplace,
-              );
-            },
+          appBar: const GlassAppBar(title: 'Add Subjects'),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding:
+                    EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
+                child: Text(
+                  'Select a subject to add. Conflicting times or exceeding the credit limit will be blocked automatically.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: controller.isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : controller.availableSubjects.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No subjects available to register.',
+                              style: TextStyle(color: Colors.black54),
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: controller.availableSubjects.length,
+                            itemBuilder: (context, index) {
+                              final subject =
+                                  controller.availableSubjects[index];
+                              return _subjectCard(
+                                context,
+                                controller,
+                                subject,
+                                subjectToReplace,
+                              );
+                            },
+                          ),
+              ),
+            ],
           ),
         );
       },
@@ -83,8 +111,9 @@ class AddSubjectsPage extends StatelessWidget {
                     color: Colors.black,
                   ),
                 ),
+                const SizedBox(height: 2),
                 Text(
-                  "${subject.credits} credits",
+                  '${subject.credits} credits',
                   style: const TextStyle(
                     fontSize: 13,
                     color: Colors.black54,
@@ -100,7 +129,7 @@ class AddSubjectsPage extends StatelessWidget {
               String? error;
 
               if (subjectToReplace != null) {
-                // Switch mode (no section handling yet)
+                // Switch mode (no section handling in switch yet)
                 error = await controller.replaceSubject(
                   subjectToReplace,
                   subject,
@@ -134,7 +163,7 @@ class AddSubjectsPage extends StatelessWidget {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('Cannot register course'),
-                    content: Text('Can not add subject)'),
+                    content: Text('error'),
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.of(ctx).pop(),

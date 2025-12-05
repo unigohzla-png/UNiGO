@@ -2,28 +2,33 @@ import 'package:flutter/material.dart';
 
 class PlanSection {
   final String title;
-  String subtitle;
-  final Color indicatorColor;
   final String type;
+  final Color indicatorColor;
 
-  // state
+  String subtitle;
   bool loading;
   bool isExpanded;
-  List<Map<String, dynamic>> courses;
 
-  // credits info
-  int completedHours;
-  int totalHours;
+  /// Each item is a map from Firestore + extra fields:
+  ///  {
+  ///    'id': code,
+  ///    'code': code,
+  ///    'name': ...,
+  ///    'credits': int,
+  ///    'isCompleted': bool,
+  ///    'isEnrolled': bool,
+  ///    'grade': String?,        // from user.previousCourses[code].grade
+  ///    'semester': String?,     // from user.previousCourses[code].semester
+  ///  }
+  List<Map<String, dynamic>> courses;
 
   PlanSection({
     required this.title,
-    required this.subtitle,
-    required this.indicatorColor,
     required this.type,
+    required this.indicatorColor,
+    this.subtitle = '0 of 0 Hour',
     this.loading = false,
     this.isExpanded = false,
-    this.courses = const [],
-    this.completedHours = 0,
-    this.totalHours = 0,
-  });
+    List<Map<String, dynamic>>? courses,
+  }) : courses = courses ?? [];
 }

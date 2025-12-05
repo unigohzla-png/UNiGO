@@ -15,6 +15,12 @@ class WithdrawSubjectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final String creditsLabel = '${subject.credits} credits';
+    final String codeLabel =
+        (subject.code != null && subject.code!.isNotEmpty)
+            ? subject.code!
+            : '';
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -32,9 +38,10 @@ class WithdrawSubjectCard extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Color stripe
           Container(
             width: 6,
-            height: 40,
+            height: 44,
             decoration: BoxDecoration(
               color: subject.color,
               borderRadius: BorderRadius.circular(4),
@@ -42,6 +49,7 @@ class WithdrawSubjectCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
 
+          // Text info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -54,17 +62,49 @@ class WithdrawSubjectCard extends StatelessWidget {
                     color: Colors.black,
                   ),
                 ),
-                Text(
-                  "${subject.credits} credits",
-                  style: const TextStyle(fontSize: 13, color: Colors.black54),
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    Text(
+                      creditsLabel,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    if (codeLabel.isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      Text(
+                        codeLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.black38,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
+                if (isWithdrawn) ...[
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Withdrawn',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
 
-          // Right action button
+          // Right-side action / icon
           isWithdrawn
-              ? const Icon(Icons.lock, color: Colors.grey)
+              ? const Icon(
+                  Icons.lock,
+                  color: Colors.grey,
+                  size: 22,
+                )
               : IconButton(
                   icon: const Icon(
                     Icons.remove_circle,
@@ -78,4 +118,3 @@ class WithdrawSubjectCard extends StatelessWidget {
     );
   }
 }
-

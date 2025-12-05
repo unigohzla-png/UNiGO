@@ -49,6 +49,26 @@ class InquirySubjectsController extends ChangeNotifier {
   bool loading = false;
   String? error;
 
+  /// Total number of courses available next semester (all sections combined).
+  int get totalAvailableCourses =>
+      sections.fold<int>(0, (sum, s) => sum + s.courses.length);
+
+  /// Total credits available next semester (sum of credits of all courses).
+  int get totalAvailableHours {
+    int total = 0;
+    for (final section in sections) {
+      for (final course in section.courses) {
+        final v = course['credits'];
+        if (v is int) {
+          total += v;
+        } else if (v is num) {
+          total += v.toInt();
+        }
+      }
+    }
+    return total;
+  }
+
   Future<void> loadSections() async {
     loading = true;
     error = null;
@@ -76,7 +96,9 @@ class InquirySubjectsController extends ChangeNotifier {
 
           final int credits = (data['credits'] is int)
               ? data['credits'] as int
-              : (data['credits'] is num ? (data['credits'] as num).toInt() : 0);
+              : (data['credits'] is num
+                  ? (data['credits'] as num).toInt()
+                  : 0);
 
           totalCredits += credits;
 

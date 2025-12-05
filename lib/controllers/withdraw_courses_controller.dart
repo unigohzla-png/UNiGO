@@ -1,161 +1,177 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+
 import '../models/subject_model.dart';
 
 class WithdrawCoursesController extends ChangeNotifier {
+  final _db = FirebaseFirestore.instance;
+  final _auth = FirebaseAuth.instance;
+
   List<Subject> registeredSubjects = [];
   List<Subject> withdrawnSubjects = [];
 
   bool loading = false;
+  String? errorMessage;
+
+  int totalRegisteredCredits = 0;
+  int totalWithdrawnCredits = 0;
 
   Future<void> loadRegisteredCourses() async {
     loading = true;
+    errorMessage = null;
+    registeredSubjects = [];
+    withdrawnSubjects = [];
+    totalRegisteredCredits = 0;
+    totalWithdrawnCredits = 0;
     notifyListeners();
 
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final uid = _auth.currentUser?.uid;
     if (uid == null) {
       loading = false;
+      errorMessage = 'User not logged in.';
       notifyListeners();
       return;
     }
 
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .get();
-
+      final userDoc = await _db.collection('users').doc(uid).get();
       final data = userDoc.data();
-      if (data == null) return;
+      if (data == null) {
+        loading = false;
+        errorMessage = 'User document not found in Firestore.';
+        notifyListeners();
+        return;
+      }
 
-      registeredSubjects = [];
-      withdrawnSubjects = [];
-
-      // ------------------------------
-      // LOAD ENROLLED COURSES
-      // ------------------------------
+      // ---------------- Registered (enrolledCourses) ----------------
       final enrolled = data['enrolledCourses'];
+      final List<Subject> enrolledList = [];
+
       if (enrolled is List && enrolled.isNotEmpty) {
-        final List<Subject> list = [];
-
-        for (final code in enrolled) {
+        for (final codeRaw in enrolled) {
+          final code = codeRaw.toString();
           try {
-            final courseDoc = await FirebaseFirestore.instance
-                .collection('courses')
-                .doc(code.toString())
-                .get();
-
+            final courseDoc =
+                await _db.collection('courses').doc(code).get();
             if (courseDoc.exists) {
               final c = courseDoc.data()!;
-              list.add(
+              final credits = _parseCredits(c['credits']);
+              totalRegisteredCredits += credits;
+
+              enrolledList.add(
                 Subject(
-                  name: c['name']?.toString() ?? code.toString(),
-                  credits: (c['credits'] is int)
-                      ? c['credits']
-                      : (c['credits'] is num
-                            ? (c['credits'] as num).toInt()
-                            : 0),
+                  name: c['name']?.toString() ?? code,
+                  credits: credits,
                   color: Colors.blue,
-                  code: code.toString(),
+                  code: code,
                 ),
               );
             }
-          } catch (_) {}
+          } catch (_) {
+            // ignore individual course load errors
+          }
         }
-
-        registeredSubjects = list;
       }
 
-      // ------------------------------
-      // LOAD WITHDRAWN COURSES
-      // ------------------------------
+      // ---------------- Withdrawn (withdrawnCourses) ----------------
       final withdrawn = data['withdrawnCourses'];
+      final List<Subject> withdrawnList = [];
+
       if (withdrawn is List && withdrawn.isNotEmpty) {
-        final List<Subject> wlist = [];
-
-        for (final code in withdrawn) {
+        for (final codeRaw in withdrawn) {
+          final code = codeRaw.toString();
           try {
-            final courseDoc = await FirebaseFirestore.instance
-                .collection('courses')
-                .doc(code.toString())
-                .get();
-
+            final courseDoc =
+                await _db.collection('courses').doc(code).get();
             if (courseDoc.exists) {
               final c = courseDoc.data()!;
-              wlist.add(
+              final credits = _parseCredits(c['credits']);
+              totalWithdrawnCredits += credits;
+
+              withdrawnList.add(
                 Subject(
-                  name: c['name']?.toString() ?? code.toString(),
-                  credits: (c['credits'] is int)
-                      ? c['credits']
-                      : (c['credits'] is num
-                            ? (c['credits'] as num).toInt()
-                            : 0),
+                  name: c['name']?.toString() ?? code,
+                  credits: credits,
                   color: Colors.grey,
-                  code: code.toString(),
+                  code: code,
                 ),
               );
             } else {
-              wlist.add(
+              // fallback if course doc missing
+              withdrawnList.add(
                 Subject(
-                  name: code.toString(),
+                  name: code,
                   credits: 0,
                   color: Colors.grey,
-                  code: code.toString(),
+                  code: code,
                 ),
               );
             }
-          } catch (_) {}
+          } catch (_) {
+            // ignore individual course load errors
+          }
         }
-
-        withdrawnSubjects = wlist;
       }
 
-      // ------------------------------
-      // CLEAN UP DUPLICATES
-      // ------------------------------
-      final withdrawnCodes = withdrawnSubjects.map((s) => s.code).toSet();
+      // Avoid duplicates: if course appears in withdrawn, remove it from registered
+      final withdrawnCodes = withdrawnList.map((s) => s.code).toSet();
+      enrolledList.removeWhere(
+        (s) => s.code != null && withdrawnCodes.contains(s.code),
+      );
 
-      // remove any registered course that has been withdrawn
-      registeredSubjects.removeWhere((s) => withdrawnCodes.contains(s.code));
+      registeredSubjects = enrolledList;
+      withdrawnSubjects = withdrawnList;
+    } catch (e) {
+      errorMessage = 'Failed to load courses: $e';
     } finally {
       loading = false;
       notifyListeners();
     }
   }
 
-  // --------------------------------------------------------
-  // ATOMIC WITHDRAW FUNCTION
-  // --------------------------------------------------------
   Future<void> withdrawSubject(Subject subject) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || subject.code == null) return;
-
-    final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      errorMessage = 'User not logged in.';
+      notifyListeners();
+      return;
+    }
+    if (subject.code == null) return;
 
     try {
-      // One atomic update
-      await userRef.update({
-        'enrolledCourses': FieldValue.arrayRemove([subject.code]),
-        'withdrawnCourses': FieldValue.arrayUnion([subject.code]),
-      });
-
-      // Update local state
-      registeredSubjects.removeWhere((s) => s.code == subject.code);
-
-      // add withdrawn card with grey color
-      withdrawnSubjects.add(
-        Subject(
-          name: subject.name,
-          credits: subject.credits,
-          color: Colors.grey,
-          code: subject.code,
-        ),
+      // Remove from enrolledCourses and add to withdrawnCourses atomically-ish
+      await _db.collection('users').doc(uid).set(
+        {
+          'enrolledCourses': FieldValue.arrayRemove([subject.code]),
+          'withdrawnCourses': FieldValue.arrayUnion([subject.code]),
+        },
+        SetOptions(merge: true),
       );
+
+      // Update local lists + credits
+      registeredSubjects.removeWhere((s) => s.code == subject.code);
+      withdrawnSubjects.add(
+        subject.copyWith(color: Colors.grey),
+      );
+
+      totalRegisteredCredits -= subject.credits;
+      if (totalRegisteredCredits < 0) totalRegisteredCredits = 0;
+      totalWithdrawnCredits += subject.credits;
 
       notifyListeners();
     } catch (e) {
-      print("Withdraw error: $e");
+      errorMessage = 'Failed to withdraw course: $e';
+      notifyListeners();
     }
+  }
+
+  int _parseCredits(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v != null) {
+      return int.tryParse(v.toString()) ?? 0;
+    }
+    return 0;
   }
 }

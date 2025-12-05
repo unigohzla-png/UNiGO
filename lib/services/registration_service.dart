@@ -144,29 +144,38 @@ class RegistrationService {
   ///     )
   ///
   /// NOTE: [userId] is unused for now; we rely on FirebaseAuth for current user.
-  bool canUserRegisterNow(String userId) {
-    final now = DateTime.now();
+ bool canUserRegisterNow(String _) {
+  final now = DateTime.now();
 
-    // 1) Global gate
-    if (!isInsideGlobalWindow) return false;
+  final bool hasAssignedWindow =
+      assignedStartAt != null &&
+      assignedEndAt != null &&
+      now.isAfter(assignedStartAt!) &&
+      now.isBefore(assignedEndAt!);
 
-    // 2) After 20:00 → everyone can register (until midnight)
-    if (now.hour >= 20) {
-      return true;
-    }
+  debugPrint('--- canUserRegisterNow ---');
+  debugPrint('now: $now');
+  debugPrint('assignedStartAt: $assignedStartAt');
+  debugPrint('assignedEndAt  : $assignedEndAt');
+  debugPrint('hasAssignedWindow: $hasAssignedWindow');
+  debugPrint('now.hour >= 20: ${now.hour >= 20}');
 
-    // 3) Within personal assigned slot?
-    if (_isNowWithinRange(assignedStartAt, assignedEndAt, now)) {
-      return true;
-    }
-
-    // 4) Within reserved slot? (we’ll fill these later)
-    if (_isNowWithinRange(reservedStartAt, reservedEndAt, now)) {
-      return true;
-    }
-
-    return false;
+  // ✅ If student has a valid personal window → always allow
+  if (hasAssignedWindow) {
+    debugPrint('RESULT: true (personal window)');
+    return true;
   }
+
+  // ✅ After 20:00 → allow global registration
+  if (now.hour >= 20) {
+    debugPrint('RESULT: true (after 20:00 fallback)');
+    return true;
+  }
+
+  // ❌ Otherwise → closed
+  debugPrint('RESULT: false (no window)');
+  return false;
+}
 
   // ======================================================
   // =============== HELPERS / FUTURE USE =================

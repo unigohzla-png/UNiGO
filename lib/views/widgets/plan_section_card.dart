@@ -4,7 +4,10 @@ import '../../models/plan_section.dart';
 class PlanSectionCard extends StatefulWidget {
   final PlanSection section;
 
-  const PlanSectionCard({super.key, required this.section});
+  const PlanSectionCard({
+    super.key,
+    required this.section,
+  });
 
   @override
   State<PlanSectionCard> createState() => _PlanSectionCardState();
@@ -92,18 +95,13 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
         // ---------- EXPANDED COURSE LIST ----------
         if (section.isExpanded)
           Padding(
-            padding: const EdgeInsets.only(
-              left: 24,
-              right: 8,
-              bottom: 8,
-              top: 0,
-            ),
+            padding:
+                const EdgeInsets.only(left: 24, right: 8, bottom: 8, top: 0),
             child: Column(
               children: section.courses.map((course) {
                 final String name =
                     course['name']?.toString() ?? 'Unknown course';
-                final String code =
-                    course['code']?.toString() ??
+                final String code = course['code']?.toString() ??
                     course['id']?.toString() ??
                     '';
                 final int credits = course['credits'] is int
@@ -112,9 +110,8 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
 
                 final bool isCompleted = course['isCompleted'] == true;
                 final bool isEnrolled = course['isEnrolled'] == true;
-                final String? grade = course['grade'] != null
-                    ? course['grade'].toString()
-                    : null;
+                final String? grade =
+                    course['grade'] != null ? course['grade'].toString() : null;
 
                 Color nameColor = Colors.black;
                 FontWeight nameWeight = FontWeight.w500;
@@ -137,6 +134,7 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
+                      // name + credits
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -174,7 +172,7 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                           ),
                         ),
 
-                      // grade + status icon (for completed)
+                      // grade (for completed only)
                       if (isCompleted && grade != null && grade.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(right: 4.0),
@@ -189,7 +187,11 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                         ),
 
                       if (statusIcon != null)
-                        Icon(statusIcon, size: 18, color: statusColor),
+                        Icon(
+                          statusIcon,
+                          size: 18,
+                          color: statusColor,
+                        ),
                     ],
                   ),
                 );

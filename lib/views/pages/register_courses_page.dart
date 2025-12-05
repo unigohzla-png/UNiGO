@@ -47,9 +47,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
               final service = RegistrationService.instance;
               final now = DateTime.now();
 
-              final canAccess = service.canUserRegisterNow(
-                'ignored',
-              ); // param not used
+              final canAccess = service.canUserRegisterNow('ignored');
 
               // Before 20:00 and inside a personal slot → tie timer to slot end
               final useSlotWindow =
@@ -68,65 +66,40 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: [
-                      // ---------- Timer / header ----------
-                      if (canAccess) ...[
-                        const Text(
-                          'You have 15 minutes to add subjects',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          controller.formattedTime,
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ] else ...[
-                        const SizedBox(height: 8),
-                      ],
-
-                      // ---------- Credits summary ----------
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'Total: ${controller.totalRegisteredCredits} / ${RegisterCoursesController.maxCredits} credits',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.black87,
-                          ),
-                        ),
+                      _Header(
+                        canAccess: canAccess,
+                        controller: controller,
                       ),
                       const SizedBox(height: 16),
 
                       // ---------- Registered subjects list ----------
                       Expanded(
-                        child: controller.registeredSubjects.isEmpty
+                        child: controller.isLoading
                             ? const Center(
-                                child: Text(
-                                  'No subjects registered yet',
-                                  style: TextStyle(color: Colors.black54),
-                                ),
+                                child: CircularProgressIndicator(),
                               )
-                            : ListView.builder(
-                                itemCount: controller.registeredSubjects.length,
-                                itemBuilder: (context, index) {
-                                  final subject =
-                                      controller.registeredSubjects[index];
-                                  return _subjectCard(
-                                    context,
-                                    controller,
-                                    subject,
-                                  );
-                                },
-                              ),
+                            : controller.registeredSubjects.isEmpty
+                                ? const Center(
+                                    child: Text(
+                                      'No subjects registered yet.',
+                                      style: TextStyle(
+                                        color: Colors.black54,
+                                      ),
+                                    ),
+                                  )
+                                : ListView.builder(
+                                    itemCount:
+                                        controller.registeredSubjects.length,
+                                    itemBuilder: (context, index) {
+                                      final subject =
+                                          controller.registeredSubjects[index];
+                                      return _subjectCard(
+                                        context,
+                                        controller,
+                                        subject,
+                                      );
+                                    },
+                                  ),
                       ),
                     ],
                   ),
@@ -139,16 +112,29 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                     if (!canAccess) {
                       showModalBottomSheet(
                         context: context,
-                        builder: (_) => Container(
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(16),
+                          ),
+                        ),
+                        builder: (_) => Padding(
                           padding: const EdgeInsets.all(16),
                           child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: const [
-                              Icon(Icons.lock_clock, color: Colors.black54),
+                              Icon(
+                                Icons.lock_clock,
+                                color: Colors.black54,
+                              ),
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  'Registration is not open for you now. Check reservation time.',
-                                  style: TextStyle(color: Colors.black87),
+                                  'Registration is not open for you now.\n'
+                                  'Please check your reserved time in the Reserve Time page.',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.black87,
+                                  ),
                                 ),
                               ),
                             ],
@@ -179,18 +165,119 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
   }
 }
 
+class _Header extends StatelessWidget {
+  final bool canAccess;
+  final RegisterCoursesController controller;
+
+  const _Header({
+    required this.canAccess,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final creditsText =
+        'Total: ${controller.totalRegisteredCredits} / ${RegisterCoursesController.maxCredits} credits';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F7F7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (canAccess) ...[
+            const Text(
+              'Registration window',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Text(
+                  controller.formattedTime,
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'You have limited time to add or remove subjects.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ] else ...[
+            Row(
+              children: const [
+                Icon(Icons.info_outline, size: 18, color: Colors.black54),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Registration is currently closed. You can still view your registered subjects.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // Credits summary + mini bar
+          Text(
+            creditsText,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: Colors.black87,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              minHeight: 6,
+              value: (controller.totalRegisteredCredits /
+                      RegisterCoursesController.maxCredits)
+                  .clamp(0.0, 1.0),
+              backgroundColor: Colors.grey.shade300,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 Widget _subjectCard(
   BuildContext context,
   RegisterCoursesController controller,
   Subject subject,
 ) {
   final sec = subject.selectedSection;
-
   final hasRealSection = sec != null && sec.id.isNotEmpty; // basic sanity check
 
   final String courseTitle = subject.name;
 
-  final String sectionLabel = hasRealSection ? 'Sec ${sec!.id}' : 'No section';
+  final String sectionLabel = hasRealSection ? 'Sec ${sec.id}' : 'No section';
   final String doctorLabel = hasRealSection
       ? (sec.doctorName.isEmpty ? 'Doctor: TBA' : 'Doctor: ${sec.doctorName}')
       : '';
@@ -286,7 +373,10 @@ Widget _subjectCard(
               if (doctorLabel.isNotEmpty) ...[
                 Text(
                   doctorLabel,
-                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Colors.black87,
+                  ),
                 ),
                 const SizedBox(height: 2),
               ],
@@ -295,7 +385,10 @@ Widget _subjectCard(
               if (scheduleLabel.isNotEmpty) ...[
                 Text(
                   scheduleLabel,
-                  style: const TextStyle(fontSize: 12, color: Colors.black54),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.black54,
+                  ),
                 ),
                 const SizedBox(height: 2),
               ],
@@ -303,7 +396,10 @@ Widget _subjectCard(
               // Credits
               Text(
                 creditsLabel,
-                style: const TextStyle(fontSize: 12, color: Colors.black45),
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.black45,
+                ),
               ),
             ],
           ),
