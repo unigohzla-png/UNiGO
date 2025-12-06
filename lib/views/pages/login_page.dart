@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart'; // 👈 NEW
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -24,23 +25,56 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // 1) Sign in with Firebase Auth
       final userCredential = await FirebaseAuth.instance
           .signInWithEmailAndPassword(
             email: _emailController.text.trim(),
             password: _passwordController.text.trim(),
           );
 
-      debugPrint("✅ Login success: ${userCredential.user?.uid}");
+      final user = userCredential.user;
+      debugPrint("✅ Login success: ${user?.uid}");
 
-      if (mounted) {
-        Navigator.pushReplacementNamed(
-          context,
-          '/home',
-        ); // Go to home/main scaffold
+      if (user == null) {
+        throw FirebaseAuthException(
+          code: 'no-user',
+          message: 'Failed to get signed-in user.',
+        );
+      }
+
+      final uid = user.uid;
+
+      // 2) Read roles/{uid} to decide where to route
+      final roleDoc = await FirebaseFirestore.instance
+          .collection('roles')
+          .doc(uid)
+          .get();
+      final roleData = roleDoc.data() ?? {};
+
+      final bool isAdmin = (roleData['admin'] ?? false) == true;
+      final bool isSuperAdmin = (roleData['super_admin'] ?? false) == true;
+
+      debugPrint(
+        '🔐 Roles for $uid -> admin=$isAdmin, super_admin=$isSuperAdmin',
+      );
+
+      if (!mounted) return;
+
+      // 3) Route based on role
+      if (isAdmin || isSuperAdmin) {
+        // Admin / Super Admin → Admin panel
+        Navigator.pushReplacementNamed(context, '/admin-home');
+      } else {
+        // Default → Student home
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _errorMessage = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'Unexpected error: $e';
       });
     } finally {
       if (mounted) setState(() => _loading = false);

@@ -1,60 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+
 import '../../models/user_role.dart';
 import 'admin_courses_page.dart';
 import 'admin_students_page.dart';
 import 'super_admin_registration_page.dart';
+import 'super_admin_courses_page.dart';
 
-class AdminRootPage extends StatefulWidget {
+class AdminRootPage extends StatelessWidget {
   final UserRole role;
 
   const AdminRootPage({super.key, required this.role});
-
-  @override
-  State<AdminRootPage> createState() => _AdminRootPageState();
-}
-
-class _AdminRootPageState extends State<AdminRootPage> {
-  int _index = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    final isSuper = widget.role == UserRole.superAdmin;
-
-    final pages = <Widget>[
-      _DashboardPage(isSuper: isSuper),
-      const AdminCoursesPage(),
-      const AdminStudentsPage(),
-    ];
-
-    return Scaffold(
-      body: SafeArea(child: pages[_index]),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_outlined),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.book_outlined),
-            label: 'Courses',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_alt_outlined),
-            label: 'Students',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DashboardPage extends StatelessWidget {
-  final bool isSuper;
-
-  const _DashboardPage({required this.isSuper});
 
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
@@ -63,6 +19,8 @@ class _DashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isSuper = role == UserRole.superAdmin;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(isSuper ? 'Super Admin Dashboard' : 'Admin Dashboard'),
@@ -83,7 +41,9 @@ class _DashboardPage extends StatelessWidget {
               subtitle: 'View and manage students in courses',
               icon: Icons.book_outlined,
               onTap: () {
-                // you can later hook this to switch to Courses tab
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AdminCoursesPage()),
+                );
               },
             ),
             const SizedBox(height: 12),
@@ -93,10 +53,30 @@ class _DashboardPage extends StatelessWidget {
               subtitle: 'Search and inspect student records',
               icon: Icons.people_alt_outlined,
               onTap: () {
-                // will be wired later
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AdminStudentsPage(isSuper: isSuper),
+                  ),
+                );
               },
             ),
+
+            // ---- Super admin extras ----
             if (isSuper) ...[
+              const SizedBox(height: 12),
+              _dashCard(
+                context,
+                title: 'Courses & sections',
+                subtitle: 'Create new courses and manage their sections',
+                icon: Icons.menu_book_outlined,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SuperAdminCoursesPage(),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 12),
               _dashCard(
                 context,

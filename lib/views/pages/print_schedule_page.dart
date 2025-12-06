@@ -1,4 +1,3 @@
-// import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +7,11 @@ import '../../models/schedule_course.dart';
 import '../widgets/glass_appbar.dart';
 
 class PrintSchedulePage extends StatefulWidget {
-  const PrintSchedulePage({super.key});
+  /// If null → normal student (uses logged-in UID).
+  /// If non-null → admin/super admin viewing a specific student.
+  final String? studentUidOverride;
+
+  const PrintSchedulePage({super.key, this.studentUidOverride});
 
   @override
   State<PrintSchedulePage> createState() => _PrintSchedulePageState();
@@ -20,7 +23,9 @@ class _PrintSchedulePageState extends State<PrintSchedulePage> {
   @override
   void initState() {
     super.initState();
-    _controller = PrintScheduleController();
+    _controller = PrintScheduleController(
+      studentUidOverride: widget.studentUidOverride,
+    );
     _controller.loadInitial();
   }
 
@@ -36,14 +41,24 @@ class _PrintSchedulePageState extends State<PrintSchedulePage> {
       value: _controller,
       child: Consumer<PrintScheduleController>(
         builder: (context, controller, _) {
+          final isAdminView = controller.isAdminView;
+
           return Scaffold(
             backgroundColor: Colors.white,
-            appBar: const GlassAppBar(title: 'Print Schedule'),
+            appBar: GlassAppBar(
+              title: isAdminView ? 'Student Schedule' : 'Print Schedule',
+            ),
             body: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // -------- Admin banner (when viewing another student) --------
+                  if (isAdminView) ...[
+                    _AdminInfoBanner(controller: controller),
+                    const SizedBox(height: 12),
+                  ],
+
                   // -------- Semester dropdown + status --------
                   _HeaderRow(controller: controller),
 
@@ -106,6 +121,45 @@ class _PrintSchedulePageState extends State<PrintSchedulePage> {
 }
 
 // ===========================================================
+//                    ADMIN VIEW BANNER
+// ===========================================================
+
+class _AdminInfoBanner extends StatelessWidget {
+  final PrintScheduleController controller;
+
+  const _AdminInfoBanner({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final name = controller.studentName.isEmpty
+        ? 'Unknown student'
+        : controller.studentName;
+    final id = controller.studentId.isEmpty ? '—' : controller.studentId;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blue.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, color: Colors.blue),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Viewing schedule for:\n$name (ID: $id)',
+              style: const TextStyle(fontSize: 12, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===========================================================
 //                      HEADER ROW
 // ===========================================================
 
@@ -120,7 +174,7 @@ class _HeaderRow extends StatelessWidget {
       children: [
         Expanded(
           child: DropdownButtonFormField<String>(
-            initialValue: controller.selectedSemester,
+            value: controller.selectedSemester,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Semester',
@@ -187,8 +241,8 @@ class _SchedulePreview extends StatelessWidget {
               ),
               color: Colors.grey.shade200,
             ),
-            child: Row(
-              children: const [
+            child: const Row(
+              children: [
                 Expanded(flex: 2, child: Text('Code')),
                 Expanded(flex: 4, child: Text('Course')),
                 Expanded(flex: 1, child: Text('Cr')),
@@ -354,9 +408,3 @@ class _ActionButtons extends StatelessWidget {
     ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
   }
 }
-
-// void _showError(BuildContext context, String msg) {
-//   ScaffoldMessenger.of(
-//     context,
-//   ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));
-// }

@@ -1,8 +1,10 @@
 import 'dart:ui';
-import '../../main.dart';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../controllers/calendar_controller.dart';
+import '../../main.dart';
 
 class CalendarPage extends StatelessWidget {
   const CalendarPage({super.key});
@@ -25,10 +27,14 @@ class _CalendarScaffold extends StatelessWidget {
 
     final daysCount = controller.daysInMonth(controller.currentMonth);
     final startOffset = controller.mondayBasedWeekday(controller.currentMonth);
-    final selectedDate = controller.dateFor(controller.selectedDay);
-    final leftDayName = CalendarController.weekdays[selectedDate.weekday % 7];
-    final leftMonthName =
-        CalendarController.months[controller.currentMonth.month - 1];
+
+    // 🔹 Use TODAY for the left side, regardless of what is selected
+    final DateTime today = controller.today;
+    final String leftDayName = CalendarController.weekdays[today.weekday % 7];
+    final String leftMonthName = CalendarController.months[today.month - 1];
+
+    // (we still keep selectedDay for highlighting and filtering)
+    final DateTime selectedDate = controller.dateFor(controller.selectedDay);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -75,7 +81,7 @@ class _CalendarScaffold extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              "${controller.selectedDay}",
+                              "${today.day}", // 👈 always today's date
                               style: const TextStyle(
                                 fontFamily: "AnekTelugu",
                                 fontSize: 38,
@@ -97,7 +103,6 @@ class _CalendarScaffold extends StatelessWidget {
                         ),
                       ),
                     ),
-
                     // Divider
                     Container(
                       width: 1.5,
@@ -256,6 +261,7 @@ class _CalendarScaffold extends StatelessWidget {
 
             const SizedBox(height: 20),
 
+            // ======= Events / Reminders card =======
             _glass(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -274,65 +280,41 @@ class _CalendarScaffold extends StatelessWidget {
 
                     const SizedBox(height: 12),
 
-                    // FILTER
-                    Row(
-                      children: [
-                        _glassIconButton(
-                          icon: Icons.filter_list_rounded,
-                          onTap: () => controller.toggleFilterMenu(),
-                          size: 36,
-                        ),
-                        Expanded(
-                          child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 250),
-                            child: controller.showFilterMenu
-                                ? Padding(
-                                    padding: const EdgeInsets.only(left: 10),
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      child: _glass(
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            _filterListItem("All", controller),
-                                            _filterListItem(
-                                              "Event",
-                                              controller,
-                                              swatch: controller.dotColor(
-                                                "Event",
-                                              ),
-                                            ),
-                                            _filterListItem(
-                                              "Deadline",
-                                              controller,
-                                              swatch: controller.dotColor(
-                                                "Deadline",
-                                              ),
-                                            ),
-                                            _filterListItem(
-                                              "Reminder",
-                                              controller,
-                                              swatch: controller.dotColor(
-                                                "Reminder",
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ),
-                      ],
-                    ),
+                    // FILTER + LIST
+                    if (controller.selectedTab == "Events") ...[
+                      const SizedBox(height: 10),
 
-                    const SizedBox(height: 12),
+                      // Always-visible pill filters (Events only)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _filterListItem("All", controller),
+                            _filterListItem(
+                              "Event",
+                              controller,
+                              swatch: controller.dotColor("Event"),
+                            ),
+                            _filterListItem(
+                              "Deadline",
+                              controller,
+                              swatch: controller.dotColor("Deadline"),
+                            ),
+                            _filterListItem(
+                              "Reminder",
+                              controller,
+                              swatch: controller.dotColor("Reminder"),
+                            ),
+                          ],
+                        ),
+                      ),
 
-                    if (controller.selectedTab == "Events")
-                      ..._buildEventCards(controller)
-                    else
+                      const SizedBox(height: 12),
+                      ..._buildEventCards(controller),
+                    ] else ...[
+                      const SizedBox(height: 12),
                       ..._buildReminderCards(controller),
+                    ],
                   ],
                 ),
               ),
@@ -344,30 +326,52 @@ class _CalendarScaffold extends StatelessWidget {
   }
 }
 
+// ===========================================================
+//                   LIST BUILDERS
+// ===========================================================
+
 List<Widget> _buildEventCards(CalendarController controller) {
   final today = controller.today;
-  final twoWeeksFromNow = today.add(const Duration(days: 14));
   final tappedDate = controller.dateFor(controller.selectedDay);
+
+  // 🔹 Define "today" at midnight for safe comparisons
+  final DateTime todayStart = DateTime(today.year, today.month, today.day);
+
+  // 🔹 End of *this* month (e.g. 2025-09-30)
+  final DateTime endOfMonth = DateTime(today.year, today.month + 1, 0);
 
   final filtered = controller.events.where((e) {
     final date = e.date;
 
+    // 1) Type filter: if not "All", enforce type
     if (controller.selectedFilter != "All" &&
         e.type != controller.selectedFilter) {
       return false;
     }
 
-    final isFocused =
+    // 2) Behavior when filter == "All":
+    if (controller.selectedFilter == "All") {
+      // ➜ show everything from *today* until the end of the month
+      final d = DateTime(date.year, date.month, date.day);
+      return !d.isBefore(todayStart) && !d.isAfter(endOfMonth);
+    }
+
+    // 3) Behavior when specific filter (Event / Deadline / Reminder):
+    //    - If tapped date != today → show only that day
+    //    - Else → keep your old "today + 2 weeks" logic (optional)
+    final bool isFocusedDifferentDay =
         !(tappedDate.year == today.year &&
             tappedDate.month == today.month &&
             tappedDate.day == today.day);
 
-    if (isFocused) {
+    if (isFocusedDifferentDay) {
       return date.year == tappedDate.year &&
           date.month == tappedDate.month &&
           date.day == tappedDate.day;
     }
 
+    // fallback (same as your old behavior): today → two weeks
+    final twoWeeksFromNow = today.add(const Duration(days: 14));
     return date.isAfter(today.subtract(const Duration(days: 1))) &&
         date.isBefore(twoWeeksFromNow);
   }).toList();
@@ -392,49 +396,56 @@ List<Widget> _buildEventCards(CalendarController controller) {
     final color = controller.dotColor(e.type);
     return Align(
       alignment: Alignment.centerLeft,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 360),
-        child: _glass(
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                Container(
-                  width: 10,
-                  height: 10,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
+      child: GestureDetector(
+        onTap: () {
+          // 🔹 Jump highlight to this event's date
+          controller.selectDate(e.date);
+        },
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: _glass(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 10,
+                    margin: const EdgeInsets.only(right: 10),
+                    decoration: BoxDecoration(
+                      color: color,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        e.title,
-                        style: const TextStyle(
-                          fontFamily: "AnekTelugu",
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          e.title,
+                          style: const TextStyle(
+                            fontFamily: "AnekTelugu",
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "${CalendarController.months[e.date.month - 1]} ${e.date.day}, ${e.date.year} • ${e.type}",
-                        style: TextStyle(
-                          fontFamily: "AnekTelugu",
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: color,
+                        const SizedBox(height: 4),
+                        Text(
+                          "${CalendarController.months[e.date.month - 1]} "
+                          "${e.date.day}, ${e.date.year} • ${e.type}",
+                          style: TextStyle(
+                            fontFamily: "AnekTelugu",
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: color,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -468,18 +479,42 @@ List<Widget> _buildReminderCards(CalendarController controller) {
     ...reminders.map((e) {
       return Align(
         alignment: Alignment.centerLeft,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
-          child: _glass(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Text(
-                "• ${e.title} — ${CalendarController.months[e.date.month - 1]} ${e.date.day}",
-                style: const TextStyle(
-                  fontFamily: "AnekTelugu",
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
+        child: GestureDetector(
+          onTap: () {
+            // 🔹 Jump calendar highlight to this reminder's date
+            controller.selectDate(e.date);
+          },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: _glass(
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        "• ${e.title} — "
+                        "${CalendarController.months[e.date.month - 1]} ${e.date.day}",
+                        style: const TextStyle(
+                          fontFamily: "AnekTelugu",
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 20,
+                        color: Colors.red,
+                      ),
+                      onPressed: () {
+                        // 🔹 Delete only personal reminders owned by this user
+                        controller.deleteReminder(e);
+                      },
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -498,6 +533,10 @@ List<Widget> _buildReminderCards(CalendarController controller) {
     ),
   ];
 }
+
+// ===========================================================
+//                 ADD REMINDER DIALOG
+// ===========================================================
 
 void _showAddReminderDialog(CalendarController controller) {
   String reminderTitle = "";
@@ -556,9 +595,9 @@ void _showAddReminderDialog(CalendarController controller) {
                 child: const Text("Cancel"),
               ),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (reminderTitle.isNotEmpty && reminderDate != null) {
-                    controller.addReminder(reminderTitle, reminderDate!);
+                    await controller.addReminder(reminderTitle, reminderDate!);
                     Navigator.pop(context);
                   }
                 },
@@ -571,6 +610,10 @@ void _showAddReminderDialog(CalendarController controller) {
     },
   );
 }
+
+// ===========================================================
+//               SMALL UI HELPERS / WIDGETS
+// ===========================================================
 
 Widget _bigTab(String tab, CalendarController controller) {
   final isActive = controller.selectedTab == tab;
@@ -606,29 +649,38 @@ Widget _filterListItem(
   return GestureDetector(
     onTap: () => controller.selectFilter(label),
     child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+      margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
       decoration: BoxDecoration(
-        color: isActive ? Colors.white.withOpacity(0.35) : Colors.transparent,
-        borderRadius: BorderRadius.circular(20),
+        color: isActive
+            ? Colors.white.withOpacity(0.45)
+            : Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999), // full pill
+        border: Border.all(
+          color: isActive
+              ? Colors.black.withOpacity(0.6)
+              : Colors.white.withOpacity(0.4),
+          width: 1,
+        ),
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           if (swatch != null) ...[
             Container(
-              width: 8,
-              height: 8,
+              width: 10,
+              height: 10,
               decoration: BoxDecoration(color: swatch, shape: BoxShape.circle),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 1),
           ],
           Text(
             label,
             style: TextStyle(
               fontFamily: "AnekTelugu",
               fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: isActive ? Colors.black : Colors.black54,
+              fontWeight: FontWeight.w700,
+              color: isActive ? Colors.black : Colors.black87,
             ),
           ),
         ],
@@ -661,6 +713,9 @@ Widget _glass({required Widget child}) {
     ),
   );
 }
+
+// if any old code still calls glass(), forward to _glass
+Widget glass({required Widget child}) => _glass(child: child);
 
 Widget _glassIconButton({
   required IconData icon,

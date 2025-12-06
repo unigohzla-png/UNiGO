@@ -93,7 +93,7 @@ class ReserveTimePage extends StatelessWidget {
                               borderSide: BorderSide.none,
                             ),
                           ),
-                          value: controller.selectedTime,
+                          initialValue: controller.selectedTime,
                           hint: const Text('Select time slot'),
                           items: controller.timeSlots
                               .map(

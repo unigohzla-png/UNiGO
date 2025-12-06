@@ -111,7 +111,7 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                 final bool isCompleted = course['isCompleted'] == true;
                 final bool isEnrolled = course['isEnrolled'] == true;
                 final String? grade =
-                    course['grade'] != null ? course['grade'].toString() : null;
+                    course['grade']?.toString();
 
                 Color nameColor = Colors.black;
                 FontWeight nameWeight = FontWeight.w500;

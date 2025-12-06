@@ -23,6 +23,9 @@ import 'views/pages/course_page.dart';
 import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
+import 'views/admin/admin_courses_page.dart'; // add this import at top
+import 'views/admin/admin_home_page.dart';
+
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -46,6 +49,9 @@ class MyApp extends StatelessWidget {
         // both "/" and "/home" go through the auth+role gate
         '/': (context) => const AuthRoleGate(),
         '/home': (context) => const AuthRoleGate(),
+
+        '/admin-courses': (context) => const AdminCoursesPage(), // 👈 NEW
+        '/admin-home': (context) => const AdminHomePage(), // 👈 NEW
 
         // student-only sub-pages
         '/reserve-time': (context) => const ReserveTimePage(),
@@ -184,7 +190,7 @@ class _MainScaffoldState extends State<MainScaffold> {
                       children: [
                         _buildNavItem(Icons.home, "Home", 0),
                         _buildNavItem(Icons.book, "Courses", 1),
-                        _buildNavItem(Icons.calendar_today, "Schedule", 2),
+                        _buildNavItem(Icons.calendar_today, "Calendar", 2),
                         _buildNavItem(Icons.person, "Profile", 3),
                       ],
                     ),

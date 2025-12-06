@@ -9,13 +9,19 @@ import 'package:pdf/widgets.dart' as pw;
 import '../models/schedule_course.dart';
 
 /// Controller responsible for:
-///  - reading previousCourses from user doc
+///  - reading previousCourses from a user doc (student or override)
 ///  - listing available semesters
 ///  - loading all courses for a selected semester
 ///  - generating a formal PDF schedule
 class PrintScheduleController extends ChangeNotifier {
+  PrintScheduleController({this.studentUidOverride});
+
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+
+  /// If set, we read data for this UID (used by super admin).
+  /// If null, we read for the currently logged-in user (normal student mode).
+  final String? studentUidOverride;
 
   bool loading = false;
   String? errorMessage;
@@ -37,6 +43,12 @@ class PrintScheduleController extends ChangeNotifier {
   String studentId = '';
   String major = '';
   String faculty = '';
+
+  /// True when opened in "admin view for some student"
+  bool get isAdminView => studentUidOverride != null;
+
+  /// UID we actually use to read from Firestore.
+  String? get _effectiveUid => studentUidOverride ?? _auth.currentUser?.uid;
 
   /// Academic year string derived from selectedSemester
   /// e.g. "Fall 2025" -> "2025/2026", "Spring 2025" -> "2024/2025".
@@ -69,9 +81,9 @@ class PrintScheduleController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final uid = _auth.currentUser?.uid;
-      if (uid == null) {
-        throw Exception('User not logged in');
+      final uid = _effectiveUid;
+      if (uid == null || uid.isEmpty) {
+        throw Exception('No user selected.');
       }
 
       final userSnap = await _db.collection('users').doc(uid).get();

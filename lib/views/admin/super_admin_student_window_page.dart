@@ -112,9 +112,9 @@ class _SuperAdminStudentWindowPageState
 
     await ref.set(data, SetOptions(merge: true));
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Window updated')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Window updated')));
   }
 
   String _fmtDateTime(DateTime? d) {
@@ -126,9 +126,7 @@ class _SuperAdminStudentWindowPageState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Student registration windows'),
-      ),
+      appBar: AppBar(title: const Text('Student registration windows')),
       body: Column(
         children: [
           Padding(
@@ -176,35 +174,31 @@ class _SuperAdminStudentWindowPageState
                     child: Text('Search for a student to edit their window'),
                   )
                 : _results!.docs.isEmpty
-                    ? const Center(
-                        child: Text('No students found for this query.'),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _results!.docs.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final doc = _results!.docs[index];
-                          final data = doc.data();
-                          final uid = doc.id;
-                          final name =
-                              (data['name'] ?? 'Unknown') as String;
-                          final id = (data['id'] ?? '').toString();
-                          final email =
-                              (data['email'] ?? '') as String;
+                ? const Center(child: Text('No students found for this query.'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _results!.docs.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final doc = _results!.docs[index];
+                      final data = doc.data();
+                      final uid = doc.id;
+                      final name = (data['name'] ?? 'Unknown') as String;
+                      final id = (data['id'] ?? '').toString();
+                      final email = (data['email'] ?? '') as String;
 
-                          return _StudentWindowTile(
-                            uid: uid,
-                            name: name,
-                            id: id,
-                            email: email,
-                            db: _db,
-                            fmt: _fmtDateTime,
-                            pickDateTime: _pickDateTime,
-                            updateWindow: _updateWindow,
-                          );
-                        },
-                      ),
+                      return _StudentWindowTile(
+                        uid: uid,
+                        name: name,
+                        id: id,
+                        email: email,
+                        db: _db,
+                        fmt: _fmtDateTime,
+                        pickDateTime: _pickDateTime,
+                        updateWindow: _updateWindow,
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -224,7 +218,8 @@ class _StudentWindowTile extends StatelessWidget {
     required String uid,
     required DateTime? startAt,
     required DateTime? endAt,
-  }) updateWindow;
+  })
+  updateWindow;
 
   const _StudentWindowTile({
     required this.uid,
@@ -277,16 +272,15 @@ class _StudentWindowTile extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Text(
-                      'Start:',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const Text('Start:', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         fmt(startAt),
                         style: const TextStyle(
-                            fontSize: 12, color: Colors.black87),
+                          fontSize: 12,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                     TextButton(
@@ -307,16 +301,15 @@ class _StudentWindowTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Text(
-                      'End:',
-                      style: TextStyle(fontSize: 12),
-                    ),
+                    const Text('End:', style: TextStyle(fontSize: 12)),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
                         fmt(endAt),
                         style: const TextStyle(
-                            fontSize: 12, color: Colors.black87),
+                          fontSize: 12,
+                          color: Colors.black87,
+                        ),
                       ),
                     ),
                     TextButton(

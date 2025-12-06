@@ -18,8 +18,7 @@ class AdminStudentCoursePage extends StatefulWidget {
   });
 
   @override
-  State<AdminStudentCoursePage> createState() =>
-      _AdminStudentCoursePageState();
+  State<AdminStudentCoursePage> createState() => _AdminStudentCoursePageState();
 }
 
 class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
@@ -33,10 +32,10 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
 
-    final userDoc =
-        FirebaseFirestore.instance.collection('users').doc(widget.studentUid);
-    final courseDoc =
-        userDoc.collection('courses').doc(widget.courseCode);
+    final userDoc = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.studentUid);
+    final courseDoc = userDoc.collection('courses').doc(widget.courseCode);
 
     _gradesRef = courseDoc.collection('grades');
     _absencesRef = courseDoc.collection('absences');
@@ -50,18 +49,16 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
 
   // ---------- GRADES ----------
 
-  Future<void> _showGradeDialog(
-      {DocumentSnapshot<Map<String, dynamic>>? doc}) async {
+  Future<void> _showGradeDialog({
+    DocumentSnapshot<Map<String, dynamic>>? doc,
+  }) async {
     final isEdit = doc != null;
     String label = isEdit ? (doc.data()?['label'] ?? '') as String : '';
-    String score =
-        isEdit ? (doc.data()?['score'] ?? 0).toString() : '';
-    String maxScore =
-        isEdit ? (doc.data()?['maxScore'] ?? 0).toString() : '';
+    String score = isEdit ? (doc.data()?['score'] ?? 0).toString() : '';
+    String maxScore = isEdit ? (doc.data()?['maxScore'] ?? 0).toString() : '';
 
     // compute order for new item
-    int? order =
-        isEdit ? (doc.data()?['order'] as int? ?? 0) : null;
+    int? order = isEdit ? (doc.data()?['order'] as int? ?? 0) : null;
 
     if (!isEdit) {
       final last = await _gradesRef
@@ -96,15 +93,17 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
               const SizedBox(height: 8),
               TextField(
                 controller: scoreCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'Score'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: maxCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'Max score'),
               ),
             ],
@@ -137,7 +136,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                 };
 
                 if (isEdit) {
-                  await _gradesRef.doc(doc!.id).update(data);
+                  await _gradesRef.doc(doc.id).update(data);
                 } else {
                   await _gradesRef.add(data);
                 }
@@ -152,8 +151,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
     );
   }
 
-  Future<void> _deleteGrade(
-      DocumentSnapshot<Map<String, dynamic>> doc) async {
+  Future<void> _deleteGrade(DocumentSnapshot<Map<String, dynamic>> doc) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -166,10 +164,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -218,7 +213,8 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                       ),
                       trailing: Text(
                         total.toStringAsFixed(
-                            total == total.roundToDouble() ? 0 : 1),
+                          total == total.roundToDouble() ? 0 : 1,
+                        ),
                         style: const TextStyle(
                           fontWeight: FontWeight.w600,
                           color: Colors.indigo,
@@ -236,7 +232,8 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                   return ListTile(
                     title: Text(label),
                     subtitle: Text(
-                        '${score.toStringAsFixed(score == score.roundToDouble() ? 0 : 1)} / ${maxScore.toStringAsFixed(maxScore == maxScore.roundToDouble() ? 0 : 1)}'),
+                      '${score.toStringAsFixed(score == score.roundToDouble() ? 0 : 1)} / ${maxScore.toStringAsFixed(maxScore == maxScore.roundToDouble() ? 0 : 1)}',
+                    ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -245,7 +242,10 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                           onPressed: () => _showGradeDialog(doc: doc),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           onPressed: () => _deleteGrade(doc),
                         ),
                       ],
@@ -273,17 +273,20 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
 
   // ---------- ABSENCES ----------
 
-  Future<void> _showAbsenceDialog(
-      {DocumentSnapshot<Map<String, dynamic>>? doc}) async {
+  Future<void> _showAbsenceDialog({
+    DocumentSnapshot<Map<String, dynamic>>? doc,
+  }) async {
     final isEdit = doc != null;
     DateTime date = isEdit
-        ? (doc!.data()?['date'] as Timestamp).toDate()
+        ? (doc.data()?['date'] as Timestamp).toDate()
         : DateTime.now();
 
-    String startTime =
-        isEdit ? (doc!.data()?['startTime'] ?? '10:00') as String : '10:00';
-    String endTime =
-        isEdit ? (doc!.data()?['endTime'] ?? '11:00') as String : '11:00';
+    String startTime = isEdit
+        ? (doc.data()?['startTime'] ?? '10:00') as String
+        : '10:00';
+    String endTime = isEdit
+        ? (doc.data()?['endTime'] ?? '11:00') as String
+        : '11:00';
 
     Future<void> pickDate() async {
       final picked = await showDatePicker(
@@ -316,10 +319,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                     '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
                   ),
                 ),
-                TextButton(
-                  onPressed: pickDate,
-                  child: const Text('Change'),
-                ),
+                TextButton(onPressed: pickDate, child: const Text('Change')),
               ],
             ),
             const SizedBox(height: 8),
@@ -374,7 +374,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
               };
 
               if (isEdit) {
-                await _absencesRef.doc(doc!.id).update(data);
+                await _absencesRef.doc(doc.id).update(data);
               } else {
                 await _absencesRef.add(data);
               }
@@ -389,7 +389,8 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
   }
 
   Future<void> _deleteAbsence(
-      DocumentSnapshot<Map<String, dynamic>> doc) async {
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -402,10 +403,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -459,7 +457,10 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                           onPressed: () => _showAbsenceDialog(doc: doc),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          icon: const Icon(
+                            Icons.delete_outline,
+                            color: Colors.red,
+                          ),
                           onPressed: () => _deleteAbsence(doc),
                         ),
                       ],
@@ -506,8 +507,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
       body: Column(
         children: [
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
@@ -519,10 +519,7 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
           Expanded(
             child: TabBarView(
               controller: _tabController,
-              children: [
-                _buildGradesTab(),
-                _buildAbsencesTab(),
-              ],
+              children: [_buildGradesTab(), _buildAbsencesTab()],
             ),
           ),
         ],
