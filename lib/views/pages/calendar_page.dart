@@ -334,51 +334,51 @@ List<Widget> _buildEventCards(CalendarController controller) {
   final today = controller.today;
   final tappedDate = controller.dateFor(controller.selectedDay);
 
-  // 🔹 Define "today" at midnight for safe comparisons
+  // Normalize today to midnight
   final DateTime todayStart = DateTime(today.year, today.month, today.day);
-
-  // 🔹 End of *this* month (e.g. 2025-09-30)
+  // End of this month
   final DateTime endOfMonth = DateTime(today.year, today.month + 1, 0);
 
-  final filtered = controller.events.where((e) {
-    final date = e.date;
+  bool isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
-    // 1) Type filter: if not "All", enforce type
+  final bool tappedIsToday = isSameDay(tappedDate, today);
+
+  final filtered = controller.events.where((e) {
+    final DateTime d = DateTime(e.date.year, e.date.month, e.date.day);
+
+    // 1) Type filter
     if (controller.selectedFilter != "All" &&
         e.type != controller.selectedFilter) {
       return false;
     }
 
-    // 2) Behavior when filter == "All":
+    // 2) When filter == "All"
     if (controller.selectedFilter == "All") {
-      // ➜ show everything from *today* until the end of the month
-      final d = DateTime(date.year, date.month, date.day);
-      return !d.isBefore(todayStart) && !d.isAfter(endOfMonth);
+      if (!tappedIsToday) {
+        // ✅ User selected a specific day → show ONLY that day's events
+        return isSameDay(d, tappedDate);
+      } else {
+        // ✅ Default "All" behavior for today → show from today to end of month
+        return !d.isBefore(todayStart) && !d.isAfter(endOfMonth);
+      }
     }
 
-    // 3) Behavior when specific filter (Event / Deadline / Reminder):
-    //    - If tapped date != today → show only that day
-    //    - Else → keep your old "today + 2 weeks" logic (optional)
-    final bool isFocusedDifferentDay =
-        !(tappedDate.year == today.year &&
-            tappedDate.month == today.month &&
-            tappedDate.day == today.day);
-
-    if (isFocusedDifferentDay) {
-      return date.year == tappedDate.year &&
-          date.month == tappedDate.month &&
-          date.day == tappedDate.day;
+    // 3) When filter is specific (Event / Deadline / Reminder)
+    if (!tappedIsToday) {
+      // ✅ User selected a specific day → show ONLY that day's events (of that type)
+      return isSameDay(d, tappedDate);
     }
 
-    // fallback (same as your old behavior): today → two weeks
+    // 4) Specific filter + today selected → keep old "today to 2 weeks" behavior
     final twoWeeksFromNow = today.add(const Duration(days: 14));
-    return date.isAfter(today.subtract(const Duration(days: 1))) &&
-        date.isBefore(twoWeeksFromNow);
+    return d.isAfter(todayStart.subtract(const Duration(days: 1))) &&
+        d.isBefore(twoWeeksFromNow);
   }).toList();
 
   if (filtered.isEmpty) {
-    return [
-      const Padding(
+    return const [
+      Padding(
         padding: EdgeInsets.only(left: 6),
         child: Text(
           "No events to show.",
@@ -398,7 +398,7 @@ List<Widget> _buildEventCards(CalendarController controller) {
       alignment: Alignment.centerLeft,
       child: GestureDetector(
         onTap: () {
-          // 🔹 Jump highlight to this event's date
+          // Jump highlight to this event's date when you tap the card
           controller.selectDate(e.date);
         },
         child: ConstrainedBox(
@@ -459,8 +459,11 @@ List<Widget> _buildReminderCards(CalendarController controller) {
       .where((e) => e.type == "Reminder")
       .toList();
 
+  final widgets = <Widget>[];
+
   if (reminders.isEmpty) {
-    return [
+    // Show a hint if there are no reminders
+    widgets.add(
       const Padding(
         padding: EdgeInsets.only(left: 6),
         child: Text(
@@ -472,57 +475,61 @@ List<Widget> _buildReminderCards(CalendarController controller) {
           ),
         ),
       ),
-    ];
-  }
-
-  return [
-    ...reminders.map((e) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: GestureDetector(
-          onTap: () {
-            // 🔹 Jump calendar highlight to this reminder's date
-            controller.selectDate(e.date);
-          },
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 360),
-            child: _glass(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        "• ${e.title} — "
-                        "${CalendarController.months[e.date.month - 1]} ${e.date.day}",
-                        style: const TextStyle(
-                          fontFamily: "AnekTelugu",
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+    );
+  } else {
+    // Show existing reminders
+    widgets.addAll(
+      reminders.map((e) {
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: GestureDetector(
+            onTap: () {
+              // Jump calendar highlight to this reminder's date
+              controller.selectDate(e.date);
+            },
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: _glass(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          "• ${e.title} — "
+                          "${CalendarController.months[e.date.month - 1]} ${e.date.day}",
+                          style: const TextStyle(
+                            fontFamily: "AnekTelugu",
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black87,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        size: 20,
-                        color: Colors.red,
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_outline,
+                          size: 20,
+                          color: Colors.red,
+                        ),
+                        onPressed: () {
+                          controller.deleteReminder(e);
+                        },
                       ),
-                      onPressed: () {
-                        // 🔹 Delete only personal reminders owned by this user
-                        controller.deleteReminder(e);
-                      },
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-    }),
-    const SizedBox(height: 10),
+        );
+      }),
+    );
+  }
+
+  // ✅ Always show "Add Reminder" button
+  widgets.add(const SizedBox(height: 10));
+  widgets.add(
     Align(
       alignment: Alignment.centerLeft,
       child: ElevatedButton.icon(
@@ -531,7 +538,8 @@ List<Widget> _buildReminderCards(CalendarController controller) {
         label: const Text("Add Reminder"),
       ),
     ),
-  ];
+  );
+  return widgets;
 }
 
 // ===========================================================

@@ -16,8 +16,14 @@ class CalendarController extends ChangeNotifier {
   String selectedTab = "Events";
   String selectedFilter = "All";
 
-  /// All events from Firestore (we will filter them in the UI).
+  /// All events from Firestore AFTER applying per-student visibility rules.
   List<CalendarEvent> events = [];
+
+  /// Course codes the current student is related to.
+  Set<String> myCourseCodes = <String>{};
+
+  /// Current user id (student)
+  String? _currentUserId;
 
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _eventsSub;
 
@@ -49,37 +55,154 @@ class CalendarController extends ChangeNotifier {
   CalendarController() {
     currentMonth = DateTime(today.year, today.month, 1);
     selectedDay = today.day;
+    _init(); // load user courses then start listening
+  }
+
+  // ================= INITIALIZATION =================
+
+  Future<void> _init() async {
+    await _loadUserCourseCodes();
     _listenToEvents();
+  }
+
+  /// Load the current student's course codes from `users/{uid}`.
+  ///
+  /// We now rely mainly on `enrolledCourses` (array of course codes),
+  /// but still try a few legacy shapes just in case.
+  Future<void> _loadUserCourseCodes() async {
+    final user = _auth.currentUser;
+    if (user == null) {
+      if (kDebugMode) {
+        print('[Calendar] No logged-in user, cannot load course codes.');
+      }
+      return;
+    }
+
+    _currentUserId = user.uid;
+
+    try {
+      final snap = await _db.collection('users').doc(user.uid).get();
+      final data = snap.data() ?? <String, dynamic>{};
+
+      final temp = <String>{};
+
+      // 0) NEW: enrolledCourses: ["1901101", "XYZ123", ...]
+      final enrolled = data['enrolledCourses'];
+      if (enrolled is List) {
+        for (final c in enrolled) {
+          if (c != null) temp.add(c.toString());
+        }
+      }
+
+      // 1) Other simple list fields (legacy support)
+      for (final key in [
+        'currentCourseCodes',
+        'courseCodes',
+        'registeredCourseCodes',
+      ]) {
+        final value = data[key];
+        if (value is List) {
+          for (final c in value) {
+            if (c != null) temp.add(c.toString());
+          }
+        }
+      }
+
+      // 2) map fields where keys are course codes (legacy)
+      for (final key in ['enrolledCoursesMap', 'currentCourses']) {
+        final value = data[key];
+        if (value is Map) {
+          value.forEach((k, _) {
+            if (k != null) temp.add(k.toString());
+          });
+        }
+      }
+
+      // 3) list of maps with a 'code' field (legacy)
+      for (final key in ['registeredCourses']) {
+        final value = data[key];
+        if (value is List) {
+          for (final elem in value) {
+            if (elem is Map && elem['code'] != null) {
+              temp.add(elem['code'].toString());
+            }
+          }
+        }
+      }
+
+      myCourseCodes = temp;
+
+      if (kDebugMode) {
+        print('[Calendar] myCourseCodes (final) = $myCourseCodes');
+      }
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('[Calendar] Error loading user course codes: $e');
+        print(st);
+      }
+      myCourseCodes = <String>{};
+    }
   }
 
   // ================= FIRESTORE LISTENER =================
 
   void _listenToEvents() {
-    _eventsSub?.cancel(); // safety
+    _eventsSub?.cancel(); // safety in case re-called
 
     _eventsSub = _db
         .collection('calendarEvents')
         .orderBy('date')
         .snapshots()
         .listen(
-          (snapshot) {
-            if (kDebugMode) {
-              print(
-                '[Calendar] snapshot received, docs = ${snapshot.docs.length}',
-              );
+      (snapshot) {
+        if (kDebugMode) {
+          print(
+              '[Calendar] snapshot received, docs = ${snapshot.docs.length}');
+        }
+
+        final all =
+            snapshot.docs.map((doc) => CalendarEvent.fromDoc(doc)).toList();
+
+        final String? uid = _currentUserId ?? _auth.currentUser?.uid;
+        final Set<String> courseCodes = myCourseCodes;
+
+        events = all.where((e) {
+          final scope = e.scope;
+
+          // 1) Personal → only owner sees
+          if (scope == 'personal') {
+            return uid != null && e.ownerId == uid;
+          }
+
+          // 2) Course-scoped items (deadlines / events per course)
+          if (scope == 'course') {
+            // ❌ If student has NO courses, they should see NO course items.
+            if (courseCodes.isEmpty) {
+              return false;
             }
 
-            events = snapshot.docs
-                .map((doc) => CalendarEvent.fromDoc(doc))
-                .toList();
-            notifyListeners();
-          },
-          onError: (e) {
-            if (kDebugMode) {
-              print('[Calendar] error listening to calendarEvents: $e');
+            if (e.courseCode == null || e.courseCode!.isEmpty) {
+              return false;
             }
-          },
-        );
+            return courseCodes.contains(e.courseCode);
+          }
+
+          // 3) Global (or legacy records with no scope) → everyone sees
+          return true;
+        }).toList();
+
+        if (kDebugMode) {
+          print('[Calendar] visible events after filter = ${events.length}');
+        }
+
+        notifyListeners();
+      },
+      onError: (e) {
+        if (kDebugMode) {
+          print('[Calendar] error listening to calendarEvents: $e');
+        }
+      },
+    );
   }
 
   @override
@@ -143,7 +266,7 @@ class CalendarController extends ChangeNotifier {
     selectedFilter = filter;
 
     if (filter == "All") {
-      // 🔹 When switching back to "All", reset focus to TODAY
+      // When switching back to "All", reset focus to TODAY
       selectedDay = today.day;
       currentMonth = DateTime(today.year, today.month, 1);
     }
@@ -152,16 +275,13 @@ class CalendarController extends ChangeNotifier {
   }
 
   void selectDate(DateTime date) {
-    // Move the calendar to that month
     currentMonth = DateTime(date.year, date.month, 1);
-    // Highlight that day
     selectedDay = date.day;
     notifyListeners();
   }
 
   // ================= ADD REMINDER =================
 
-  /// Add a *personal* reminder for the logged-in student.
   Future<void> addReminder(String title, DateTime date) async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -181,7 +301,6 @@ class CalendarController extends ChangeNotifier {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // optimistic local update
       events = [
         ...events,
         CalendarEvent(
@@ -205,13 +324,6 @@ class CalendarController extends ChangeNotifier {
 
   // ================= DELETE REMINDER =================
 
-  /// Delete a *personal reminder* that belongs to the current user.
-  ///
-  /// - Only works if:
-  ///   - event.type == "Reminder"
-  ///   - event.scope == "personal"
-  ///   - event.ownerId == currentUser.uid
-  /// - Does **not** touch Events / Deadlines / course/global items.
   Future<void> deleteReminder(CalendarEvent event) async {
     final user = _auth.currentUser;
     if (user == null) {
@@ -219,7 +331,6 @@ class CalendarController extends ChangeNotifier {
       return;
     }
 
-    // Only allow deleting personal reminders belonging to this user
     if (event.type != 'Reminder') {
       debugPrint('[Calendar] deleteReminder ignored: not a Reminder type');
       return;
@@ -235,7 +346,6 @@ class CalendarController extends ChangeNotifier {
 
     try {
       await _db.collection('calendarEvents').doc(event.id).delete();
-      // Optimistic local removal
       events = events.where((e) => e.id != event.id).toList();
       notifyListeners();
       debugPrint('[Calendar] reminder ${event.id} deleted');
@@ -253,7 +363,7 @@ class CalendarEvent {
   final String title;
   final DateTime date;
   final String type; // Event / Deadline / Reminder
-  final String scope; // personal / course / global (optional usage)
+  final String scope; // personal / course / global (or legacy)
   final String ownerId;
   final String? courseCode;
 

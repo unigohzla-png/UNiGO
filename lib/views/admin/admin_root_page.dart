@@ -6,6 +6,7 @@ import 'admin_courses_page.dart';
 import 'admin_students_page.dart';
 import 'super_admin_registration_page.dart';
 import 'super_admin_courses_page.dart';
+import 'admin_calendar_manage_page.dart'; // 👈 NEW
 
 class AdminRootPage extends StatelessWidget {
   final UserRole role;
@@ -17,10 +18,10 @@ class AdminRootPage extends StatelessWidget {
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
 
+  bool get isSuper => role == UserRole.superAdmin;
+
   @override
   Widget build(BuildContext context) {
-    final bool isSuper = role == UserRole.superAdmin;
-
     return Scaffold(
       appBar: AppBar(
         title: Text(isSuper ? 'Super Admin Dashboard' : 'Admin Dashboard'),
@@ -54,29 +55,29 @@ class AdminRootPage extends StatelessWidget {
               icon: Icons.people_alt_outlined,
               onTap: () {
                 Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AdminStudentsPage()),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            // 👇 NEW: Calendar control (for both admin + super)
+            _dashCard(
+              context,
+              title: 'Calendar & deadlines',
+              subtitle: isSuper
+                  ? 'Manage global & course events and deadlines'
+                  : 'Manage deadlines for your courses',
+              icon: Icons.event_note_outlined,
+              onTap: () {
+                Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => AdminStudentsPage(isSuper: isSuper),
+                    builder: (_) => AdminCalendarManagePage(role: role),
                   ),
                 );
               },
             ),
 
-            // ---- Super admin extras ----
             if (isSuper) ...[
-              const SizedBox(height: 12),
-              _dashCard(
-                context,
-                title: 'Courses & sections',
-                subtitle: 'Create new courses and manage their sections',
-                icon: Icons.menu_book_outlined,
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SuperAdminCoursesPage(),
-                    ),
-                  );
-                },
-              ),
               const SizedBox(height: 12),
               _dashCard(
                 context,
@@ -88,6 +89,20 @@ class AdminRootPage extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const SuperAdminRegistrationPage(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _dashCard(
+                context,
+                title: 'Courses & sections',
+                subtitle: 'Create new courses and manage their sections',
+                icon: Icons.menu_book_outlined,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SuperAdminCoursesPage(),
                     ),
                   );
                 },
