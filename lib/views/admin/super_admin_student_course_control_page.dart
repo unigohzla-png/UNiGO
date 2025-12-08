@@ -110,7 +110,7 @@ class _SuperAdminStudentCourseControlPageState
         if (rawSections is List) {
           for (final s in rawSections) {
             if (s is Map) {
-              final map = Map<String, dynamic>.from(s as Map);
+              final map = Map<String, dynamic>.from(s);
               final id = map['id']?.toString() ?? '';
               if (id.isEmpty) continue;
 
@@ -243,7 +243,7 @@ class _SuperAdminStudentCourseControlPageState
                       width: double.infinity,
                       child: DropdownButtonFormField<_CourseOption>(
                         isExpanded: true,
-                        value: selectedCourse,
+                        initialValue: selectedCourse,
                         decoration: const InputDecoration(labelText: 'Course'),
                         items: filteredCourses
                             .map(
@@ -274,7 +274,7 @@ class _SuperAdminStudentCourseControlPageState
                       width: double.infinity,
                       child: DropdownButtonFormField<_SectionOption>(
                         isExpanded: true, // 👈 fixes horizontal overflow
-                        value: selectedSection,
+                        initialValue: selectedSection,
                         decoration: const InputDecoration(labelText: 'Section'),
                         items: (selectedCourse?.sections ?? [])
                             .map(

@@ -226,7 +226,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
 
                   // --- type ---
                   DropdownButtonFormField<String>(
-                    value: _selectedType,
+                    initialValue: _selectedType,
                     decoration: const InputDecoration(
                       labelText: 'Course type',
                     ),
@@ -390,7 +390,6 @@ class _SectionCard extends StatelessWidget {
   final VoidCallback onChanged;
 
   const _SectionCard({
-    super.key,
     required this.index,
     required this.section,
     required this.onRemove,

@@ -373,7 +373,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
                 )
               else
                 DropdownButtonFormField<_CourseOption>(
-                  value: _selectedCourse,
+                  initialValue: _selectedCourse,
                   isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Course',

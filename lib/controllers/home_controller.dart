@@ -3,9 +3,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class HomeController extends ChangeNotifier {
-  double completionRate = 82.0;
-  int completedHours = 120;
-  double gpa = 3.8;
+  double completionRate = 0.0; // %
+  int completedHours = 0;
+  double gpa = 0.0;
+
+  bool loadingStats = false;
 
   List<Map<String, String>> currentSemesterCourses = [
     {"title": "Digital Logic", "asset": "assets/DarkBlue.png"},
@@ -17,6 +19,77 @@ class HomeController extends ChangeNotifier {
     {"title": "Simulation and Modeling", "asset": "assets/DarkRed.png"},
     {"title": "Simulation and Modeling", "asset": "assets/DarkRed.png"},
   ];
+
+  Future<void> loadStats() async {
+    loadingStats = true;
+    notifyListeners();
+
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      // 1) Read user doc and gather completed course codes
+      final userSnap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .get();
+      final userData = userSnap.data();
+      if (userData == null) return;
+
+      final completedCodes = <String>{};
+
+      final prev = userData['previousCourses'];
+      if (prev is Map) {
+        // keys of previousCourses map are the course codes
+        for (final key in prev.keys) {
+          completedCodes.add(key.toString());
+        }
+      }
+
+      // 2) Scan all courses to compute total + completed credits
+      final coursesSnap = await FirebaseFirestore.instance
+          .collection('courses')
+          .get();
+
+      int totalCredits = 0;
+      int completedCredits = 0;
+
+      for (final doc in coursesSnap.docs) {
+        final data = doc.data();
+        final code = doc.id;
+        final altCode = data['code']?.toString();
+
+        // credits can be int / num / string
+        final raw = data['credits'];
+        int credits;
+        if (raw is int) {
+          credits = raw;
+        } else if (raw is num) {
+          credits = raw.toInt();
+        } else {
+          credits = int.tryParse(raw?.toString() ?? '') ?? 0;
+        }
+
+        totalCredits += credits;
+
+        final isCompleted =
+            completedCodes.contains(code) ||
+            (altCode != null && completedCodes.contains(altCode));
+
+        if (isCompleted) {
+          completedCredits += credits;
+        }
+      }
+
+      completedHours = completedCredits;
+      completionRate = totalCredits == 0
+          ? 0.0
+          : (completedCredits / totalCredits) * 100.0;
+    } finally {
+      loadingStats = false;
+      notifyListeners();
+    }
+  }
 
   bool loadingCourses = false;
   List<String> withdrawnCourseCodes = [];

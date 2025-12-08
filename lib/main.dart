@@ -44,6 +44,9 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'University IT Student',
       navigatorKey: navigatorKey,
+       theme: ThemeData(
+        fontFamily: 'IBMPlexSans', // 👈 same name as in pubspec.yaml
+      ),
       initialRoute: '/',
       routes: {
         // both "/" and "/home" go through the auth+role gate

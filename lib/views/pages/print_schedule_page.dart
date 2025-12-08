@@ -174,7 +174,7 @@ class _HeaderRow extends StatelessWidget {
       children: [
         Expanded(
           child: DropdownButtonFormField<String>(
-            value: controller.selectedSemester,
+            initialValue: controller.selectedSemester,
             isExpanded: true,
             decoration: const InputDecoration(
               labelText: 'Semester',

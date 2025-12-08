@@ -32,6 +32,7 @@ class _HomePageState extends State<HomePage> {
     // listen to controller changes so UI rebuilds when courses load
     controller.addListener(_onControllerChanged);
     controller.loadEnrolledCourses();
+    controller.loadStats(); // 👈 NEW
   }
 
   void _onControllerChanged() {
@@ -237,12 +238,16 @@ class _HomePageState extends State<HomePage> {
           gpaColor = Colors.green.withOpacity(0.9); // excellent
         }
 
+        final completionStr =
+            "${controller.completionRate.toStringAsFixed(0)}%";
+        final completedHoursStr = controller.completedHours.toString();
+
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const _StatCard(value: "82%", label: "Completion Rate"),
-            const _StatCard(value: "120", label: "Completed Hours"),
-            _StatCard(value: gpa ?? '3.8', label: "GPA", valueColor: gpaColor),
+            _StatCard(value: completionStr, label: "Completion Rate"),
+            _StatCard(value: completedHoursStr, label: "Completed Hours"),
+            _StatCard(value: gpa ?? '—', label: "GPA", valueColor: gpaColor),
           ],
         );
       },
