@@ -51,11 +51,33 @@ class _LoginPageState extends State<LoginPage> {
           .get();
       final roleData = roleDoc.data() ?? {};
 
-      final bool isAdmin = (roleData['admin'] ?? false) == true;
-      final bool isSuperAdmin = (roleData['super_admin'] ?? false) == true;
+      // ✅ New schema: single string field
+      final String roleStr = (roleData['role'] ?? '').toString();
+
+      bool isAdmin = false;
+      bool isSuperAdmin = false;
+
+      switch (roleStr) {
+        case 'admin':
+          isAdmin = true;
+          break;
+        case 'superAdmin':
+          isSuperAdmin = true;
+          break;
+        case 'student':
+          // keep both false
+          break;
+        default:
+          // 🕰 Backwards-compat with old booleans
+          final bool legacyAdmin = (roleData['admin'] ?? false) == true;
+          final bool legacySuperAdmin =
+              (roleData['super_admin'] ?? false) == true;
+          isAdmin = legacyAdmin;
+          isSuperAdmin = legacySuperAdmin;
+      }
 
       debugPrint(
-        '🔐 Roles for $uid -> admin=$isAdmin, super_admin=$isSuperAdmin',
+        '🔐 Role for $uid -> $roleStr (admin=$isAdmin, superAdmin=$isSuperAdmin)',
       );
 
       if (!mounted) return;

@@ -7,6 +7,7 @@ import 'admin_students_page.dart';
 import 'super_admin_registration_page.dart';
 import 'super_admin_courses_page.dart';
 import 'admin_calendar_manage_page.dart'; // 👈 NEW
+import 'super_admin_roles_page.dart';
 
 class AdminRootPage extends StatelessWidget {
   final UserRole role;
@@ -103,6 +104,21 @@ class AdminRootPage extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const SuperAdminCoursesPage(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _dashCard(
+                context,
+                title: 'Roles & Users',
+                subtitle:
+                    'Create accounts, assign roles, and manage users (super admin only)',
+                icon: Icons.admin_panel_settings_outlined,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SuperAdminRolesPage(),
                     ),
                   );
                 },
