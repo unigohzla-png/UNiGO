@@ -115,7 +115,7 @@ class CourseDetailsController extends ChangeNotifier {
 
   String get title => courseNameFromDb ?? courseTitle;
 
-    Future<void> _init() async {
+  Future<void> _init() async {
     try {
       debugPrint('CD: _init for title = $courseTitle');
 
@@ -143,13 +143,15 @@ class CourseDetailsController extends ChangeNotifier {
       courseCode = (data['code'] ?? doc.id).toString();
       courseNameFromDb = (data['name'] ?? courseTitle) as String;
 
-            // --- parse ALL sections from the course doc (safe) ---
+      // --- parse ALL sections from the course doc (safe) ---
       sections = [];
       sectionInfo = null;
 
       final dynamic rawSectionsDynamic = data['sections'];
-      debugPrint('CD: rawSectionsDynamic runtimeType = '
-          '${rawSectionsDynamic.runtimeType}');
+      debugPrint(
+        'CD: rawSectionsDynamic runtimeType = '
+        '${rawSectionsDynamic.runtimeType}',
+      );
 
       if (rawSectionsDynamic is List) {
         for (final item in rawSectionsDynamic) {
@@ -211,7 +213,6 @@ class CourseDetailsController extends ChangeNotifier {
       notifyListeners();
     }
   }
-
 
   Future<void> _loadMaterials() async {
     if (courseCode == null) return;
@@ -283,27 +284,34 @@ class CourseDetailsController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final q = await _db
+      final snap = await _db
           .collection('users')
           .doc(uid)
           .collection('courses')
           .doc(courseCode!)
           .collection('grades')
-          .orderBy('order')
+          .where('confirmed', isEqualTo: true) // 🔹 only confirmed
           .get();
 
-      grades = q.docs
+      grades = snap.docs
           .map(
             (d) =>
                 GradeItem.fromDoc(d as DocumentSnapshot<Map<String, dynamic>>),
           )
+          .where((g) => g.confirmed) // extra safety
           .toList();
+
+      // 🔹 sort locally by order so no Firestore index is needed
+      grades.sort((a, b) => a.order.compareTo(b.order));
 
       totalScore = grades.fold(0.0, (sum, g) => sum + g.score);
       totalMax = grades.fold(0.0, (sum, g) => sum + g.maxScore);
     } catch (e, st) {
       debugPrint('CourseDetailsController _loadGrades ERROR: $e');
       debugPrint(st.toString());
+      grades = [];
+      totalScore = 0;
+      totalMax = 0;
     } finally {
       loadingGrades = false;
       notifyListeners();

@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-
-import '../../services/super_admin_course_override_service.dart';
+import 'package:flutter_ui/services/super_admin_course_override_service.dart';
 
 class SuperAdminStudentCourseControlPage extends StatefulWidget {
   final String studentUid;
@@ -160,15 +160,15 @@ class _SuperAdminStudentCourseControlPageState
   List<String> get _upcomingCourses =>
       List<String>.from(_userData['upcomingCourses'] ?? const []);
 
-  Map<String, dynamic> get _upcomingSections => Map<String, dynamic>.from(
-    _userData['upcomingSections'] ?? <String, dynamic>{},
-  );
+  Map<String, dynamic> get _upcomingSections =>
+      Map<String, dynamic>.from(_userData['upcomingSections'] ??
+          <String, dynamic>{});
 
   List<String> get _withdrawnCourses =>
       List<String>.from(_userData['withdrawnCourses'] ?? const []);
 
   // ---------------------------------------------------------------------------
-  // Actions (now using course picker)
+  // Actions (using course picker)
   // ---------------------------------------------------------------------------
 
   Future<void> _addUpcomingCourseDialog() async {
@@ -208,7 +208,7 @@ class _SuperAdminStudentCourseControlPageState
             final lower = searchQuery.toLowerCase();
             final filteredCourses = _courseOptions.where((c) {
               if (lower.isEmpty) return true;
-              return c.code.toString().toLowerCase().contains(lower) ||
+              return c.code.toLowerCase().contains(lower) ||
                   c.name.toLowerCase().contains(lower);
             }).toList();
 
@@ -227,12 +227,6 @@ class _SuperAdminStudentCourseControlPageState
                       onChanged: (value) {
                         setStateDialog(() {
                           searchQuery = value;
-                          // Clear selection if current course is not in filtered list
-                          if (selectedCourse != null &&
-                              !filteredCourses.contains(selectedCourse)) {
-                            selectedCourse = null;
-                            selectedSection = null;
-                          }
                         });
                       },
                     ),
@@ -260,9 +254,8 @@ class _SuperAdminStudentCourseControlPageState
                           setStateDialog(() {
                             selectedCourse = value;
                             final sections = selectedCourse?.sections ?? [];
-                            selectedSection = sections.isNotEmpty
-                                ? sections.first
-                                : null;
+                            selectedSection =
+                                sections.isNotEmpty ? sections.first : null;
                           });
                         },
                       ),
@@ -273,7 +266,7 @@ class _SuperAdminStudentCourseControlPageState
                     SizedBox(
                       width: double.infinity,
                       child: DropdownButtonFormField<_SectionOption>(
-                        isExpanded: true, // 👈 fixes horizontal overflow
+                        isExpanded: true,
                         initialValue: selectedSection,
                         decoration: const InputDecoration(labelText: 'Section'),
                         items: (selectedCourse?.sections ?? [])
@@ -296,7 +289,7 @@ class _SuperAdminStudentCourseControlPageState
                     ),
 
                     if (selectedCourse != null &&
-                        (selectedCourse?.sections ?? []).isEmpty)
+                        (selectedCourse!.sections).isEmpty)
                       const Padding(
                         padding: EdgeInsets.only(top: 8.0),
                         child: Text(
@@ -329,7 +322,7 @@ class _SuperAdminStudentCourseControlPageState
       },
     );
 
-    if (ok != true || selectedCourse == null || selectedSection == null) return;
+    if (ok != true) return;
 
     if (selectedCourse == null || selectedSection == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -346,10 +339,26 @@ class _SuperAdminStudentCourseControlPageState
       );
       await _loadStudent();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
+  }
+
+  Future<void> _openGradesApprovalSheet(String courseCode) async {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return _SuperAdminGradesApprovalSheet(
+          studentUid: widget.studentUid,
+          studentName: widget.studentName,
+          courseCode: courseCode,
+        );
+      },
+    );
   }
 
   Future<void> _removeUpcomingCourse(String courseCode) async {
@@ -381,9 +390,8 @@ class _SuperAdminStudentCourseControlPageState
       );
       await _loadStudent();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -418,9 +426,8 @@ class _SuperAdminStudentCourseControlPageState
       );
       await _loadStudent();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed: $e')));
     }
   }
 
@@ -440,130 +447,149 @@ class _SuperAdminStudentCourseControlPageState
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : _studentError != null
-          ? Center(child: Text(_studentError!, textAlign: TextAlign.center))
-          : RefreshIndicator(
-              onRefresh: () async {
-                await _loadStudent();
-                await _loadCourses();
-              },
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text(
-                    subtitle,
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_loadingCourses)
-                    const Text(
-                      'Loading courses…',
-                      style: TextStyle(fontSize: 11, color: Colors.black45),
-                    )
-                  else if (_coursesError != null)
-                    Text(
-                      'Courses error: $_coursesError',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.redAccent,
+              ? Center(child: Text(_studentError!, textAlign: TextAlign.center))
+              : RefreshIndicator(
+                  onRefresh: () async {
+                    await _loadStudent();
+                    await _loadCourses();
+                  },
+                  child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                            fontSize: 12, color: Colors.black54),
                       ),
-                    ),
-                  const SizedBox(height: 16),
-
-                  // Upcoming courses
-                  _sectionHeader(
-                    title: 'Upcoming courses (next semester)',
-                    actionLabel: 'Add',
-                    onAction: _addUpcomingCourseDialog,
-                  ),
-                  if (_upcomingCourses.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8, bottom: 12),
-                      child: Text(
-                        'No upcoming courses.',
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
-                    )
-                  else
-                    ..._upcomingCourses.map(
-                      (c) => ListTile(
-                        dense: true,
-                        title: Text(c),
-                        subtitle: Text(
-                          'Section: ${_upcomingSections[c]?.toString() ?? '—'}',
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.delete_outline,
-                            color: Colors.red,
-                          ),
-                          onPressed: () => _removeUpcomingCourse(c),
-                        ),
-                      ),
-                    ),
-
-                  const SizedBox(height: 16),
-
-                  // Current enrolled
-                  const Text(
-                    'Current semester – enrolled courses',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  if (_enrolledCourses.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8, bottom: 12),
-                      child: Text(
-                        'No courses currently enrolled.',
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
-                    )
-                  else
-                    ..._enrolledCourses.map(
-                      (c) => ListTile(
-                        dense: true,
-                        title: Text(c),
-                        trailing: IconButton(
-                          icon: const Icon(
-                            Icons.logout,
+                      const SizedBox(height: 8),
+                      if (_loadingCourses)
+                        const Text(
+                          'Loading courses…',
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.black45),
+                        )
+                      else if (_coursesError != null)
+                        Text(
+                          'Courses error: $_coursesError',
+                          style: const TextStyle(
+                            fontSize: 11,
                             color: Colors.redAccent,
                           ),
-                          tooltip: 'Withdraw from this course',
-                          onPressed: () => _withdrawCurrentCourse(c),
                         ),
+                      const SizedBox(height: 16),
+
+                      // Upcoming courses
+                      _sectionHeader(
+                        title: 'Upcoming courses (next semester)',
+                        actionLabel: 'Add',
+                        onAction: _addUpcomingCourseDialog,
                       ),
-                    ),
+                      if (_upcomingCourses.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8, bottom: 12),
+                          child: Text(
+                            'No upcoming courses.',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.black54),
+                          ),
+                        )
+                      else
+                        ..._upcomingCourses.map(
+                          (c) => ListTile(
+                            dense: true,
+                            title: Text(c),
+                            subtitle: Text(
+                              'Section: ${_upcomingSections[c]?.toString() ?? '—'}',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () => _removeUpcomingCourse(c),
+                            ),
+                          ),
+                        ),
 
-                  const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                  // Withdrawn
-                  const Text(
-                    'Withdrawn courses (this semester)',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                      // Current enrolled
+                      const Text(
+                        'Current semester – enrolled courses',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      if (_enrolledCourses.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8, bottom: 12),
+                          child: Text(
+                            'No courses currently enrolled.',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.black54),
+                          ),
+                        )
+                      else
+                        ..._enrolledCourses.map(
+                          (c) => ListTile(
+                            dense: true,
+                            title: Text(c),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                TextButton(
+                                  onPressed: () => _openGradesApprovalSheet(c),
+                                  child: const Text(
+                                    'Grades',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.logout,
+                                    color: Colors.redAccent,
+                                  ),
+                                  tooltip: 'Withdraw from this course',
+                                  onPressed: () => _withdrawCurrentCourse(c),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      const SizedBox(height: 16),
+
+                      // Withdrawn
+                      const Text(
+                        'Withdrawn courses (this semester)',
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 4),
+                      if (_withdrawnCourses.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8, bottom: 12),
+                          child: Text(
+                            'No courses withdrawn yet.',
+                            style: TextStyle(
+                                fontSize: 12, color: Colors.black54),
+                          ),
+                        )
+                      else
+                        ..._withdrawnCourses.map(
+                          (c) => ListTile(
+                            dense: true,
+                            title: Text(c),
+                            leading: const Icon(
+                              Icons.block,
+                              size: 18,
+                              color: Colors.redAccent,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  if (_withdrawnCourses.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8, bottom: 12),
-                      child: Text(
-                        'No courses withdrawn yet.',
-                        style: TextStyle(fontSize: 12, color: Colors.black54),
-                      ),
-                    )
-                  else
-                    ..._withdrawnCourses.map(
-                      (c) => ListTile(
-                        dense: true,
-                        title: Text(c),
-                        leading: const Icon(
-                          Icons.block,
-                          size: 18,
-                          color: Colors.redAccent,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+                ),
     );
   }
 
@@ -586,6 +612,217 @@ class _SuperAdminStudentCourseControlPageState
           label: Text(actionLabel),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bottom sheet for grades approval
+// ---------------------------------------------------------------------------
+
+class _SuperAdminGradesApprovalSheet extends StatelessWidget {
+  final String studentUid;
+  final String studentName;
+  final String courseCode;
+
+  const _SuperAdminGradesApprovalSheet({
+    required this.studentUid,
+    required this.studentName,
+    required this.courseCode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final db = FirebaseFirestore.instance;
+
+    final gradesRef = db
+        .collection('users')
+        .doc(studentUid)
+        .collection('courses')
+        .doc(courseCode)
+        .collection('grades');
+
+    final height = MediaQuery.of(context).size.height * 0.7;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 12,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SizedBox(
+          height: height,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              Text(
+                'Grades for $courseCode',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                studentName,
+                style:
+                    const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child:
+                    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                  stream: gradesRef.orderBy('order').snapshots(),
+                  builder: (context, snap) {
+                    if (snap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                          child: CircularProgressIndicator());
+                    }
+                    if (snap.hasError) {
+                      return Center(
+                        child: Text(
+                          'Error loading grades:\n${snap.error}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      );
+                    }
+
+                    final docs = snap.data?.docs ?? [];
+                    if (docs.isEmpty) {
+                      return const Center(
+                        child: Text(
+                          'No grades recorded yet for this course.',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      );
+                    }
+
+                    return ListView.separated(
+                      itemCount: docs.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final doc = docs[index];
+                        final data = doc.data();
+
+                        final label =
+                            (data['label'] ??
+                                    data['typeLabel'] ??
+                                    'Unnamed')
+                                .toString();
+                        final score =
+                            (data['score'] as num?)?.toDouble() ?? 0.0;
+                        final maxScore =
+                            (data['maxScore'] as num?)?.toDouble() ?? 0.0;
+
+                        final confirmed =
+                            (data['confirmed'] ?? false) == true;
+                        final submitted =
+                            (data['submittedForApproval'] ?? false) ==
+                                true;
+
+                        final scoreStr = maxScore == 0
+                            ? score.toStringAsFixed(1)
+                            : '${score.toStringAsFixed(1)} / ${maxScore.toStringAsFixed(1)}';
+
+                        Widget statusChip;
+                        if (confirmed) {
+                          statusChip = const Chip(
+                            label: Text('Confirmed'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        } else if (submitted) {
+                          statusChip = const Chip(
+                            label: Text('Pending'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        } else {
+                          statusChip = const Chip(
+                            label: Text('Draft'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        }
+
+                        return ListTile(
+                          dense: true,
+                          title: Text(
+                            label,
+                            style:
+                                const TextStyle(fontSize: 14),
+                          ),
+                          subtitle: Text(
+                            scoreStr,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              statusChip,
+                              const SizedBox(width: 8),
+                              if (!confirmed && submitted)
+                                TextButton(
+                                  onPressed: () async {
+                                    try {
+                                      final auth =
+                                          FirebaseAuth.instance;
+                                      await gradesRef.doc(doc.id).update({
+                                        'confirmed': true,
+                                        'submittedForApproval': false,
+                                        'confirmedBy':
+                                            auth.currentUser?.uid,
+                                        'confirmedAt':
+                                            FieldValue.serverTimestamp(),
+                                      });
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content:
+                                              Text('Confirmed $label'),
+                                        ),
+                                      );
+                                    } catch (e) {
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        SnackBar(
+                                          content: Text(
+                                            'Failed to confirm grade: $e',
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  child: const Text('Confirm'),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

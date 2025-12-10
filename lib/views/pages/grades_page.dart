@@ -15,16 +15,7 @@ class GradesPage extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => GradesController(),
       child: Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          title: const Text(
-            'Grades',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: Colors.white,
-          foregroundColor: Colors.black,
-          elevation: 0,
-        ),
+        appBar: AppBar(title: const Text('Grades')),
         body: Consumer<GradesController>(
           builder: (context, controller, _) {
             if (controller.isLoading) {
@@ -32,15 +23,22 @@ class GradesPage extends StatelessWidget {
             }
 
             if (controller.courses.isEmpty) {
-              return const Center(child: Text('No grades available.'));
+              return const Center(
+                child: Text(
+                  'No confirmed grades yet.\n'
+                  'Once your professor adds grades and a super admin confirms them,\n'
+                  'they will appear here.',
+                  textAlign: TextAlign.center,
+                ),
+              );
             }
 
             return ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: controller.courses.length,
               itemBuilder: (context, index) {
-                final CourseGrades course = controller.courses[index];
-                return _GradeCourseCard(course: course);
+                final course = controller.courses[index];
+                return _CourseGradesCard(course: course);
               },
             );
           },
@@ -50,28 +48,14 @@ class GradesPage extends StatelessWidget {
   }
 }
 
-class _GradeCourseCard extends StatefulWidget {
+class _CourseGradesCard extends StatelessWidget {
   final CourseGrades course;
 
-  const _GradeCourseCard({required this.course});
-
-  @override
-  State<_GradeCourseCard> createState() => _GradeCourseCardState();
-}
-
-class _GradeCourseCardState extends State<_GradeCourseCard> {
-  bool _expanded = true; // default open like your screenshot
-
-  String _format(double v) {
-    return v == v.roundToDouble() ? v.toInt().toString() : v.toStringAsFixed(1);
-  }
+  const _CourseGradesCard({required this.course});
 
   @override
   Widget build(BuildContext context) {
-    final course = widget.course;
-    final items = course.items;
-    final total = course.totalScore;
-    final totalMax = course.totalMax;
+    final totalPercent = course.percentage;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -89,100 +73,108 @@ class _GradeCourseCardState extends State<_GradeCourseCard> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Column(
-            children: [
-              ListTile(
-                title: Text(
-                  course.courseName,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            course.courseCode,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            course.courseName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${totalPercent.toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${course.totalScore.toStringAsFixed(1)} / ${course.totalMax.toStringAsFixed(1)}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                trailing: Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_up
-                      : Icons.keyboard_arrow_down,
-                ),
-                onTap: () {
-                  setState(() => _expanded = !_expanded);
-                },
-              ),
-              if (_expanded) const Divider(height: 1),
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
 
-              if (_expanded)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: items.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
+                // Items
+                Column(
+                  children: course.items.map((item) {
+                    final percent = item.maxScore == 0
+                        ? 0.0
+                        : (item.score / item.maxScore) * 100;
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Expanded(
                             child: Text(
-                              'No grades recorded yet.',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.black54,
+                              item.label,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ),
-                        )
-                      : Column(
-                          children: [
-                            // grade items
-                            ...items.map((g) {
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      g.label,
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                    Text(
-                                      '${_format(g.score)} / ${_format(g.maxScore)}',
-                                      style: const TextStyle(fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-
-                            const SizedBox(height: 8),
-                            const Divider(height: 1),
-                            const SizedBox(height: 8),
-
-                            // total row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Total (/${_format(totalMax)})',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  _format(total),
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.indigo,
-                                  ),
-                                ),
-                              ],
+                          Text(
+                            '${item.score.toStringAsFixed(1)} / ${item.maxScore.toStringAsFixed(1)}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.black87,
                             ),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${percent.toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

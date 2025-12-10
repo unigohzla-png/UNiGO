@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class AdminStudentCoursePage extends StatefulWidget {
   final String studentUid;
@@ -26,6 +27,8 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
   late final TabController _tabController;
   late final CollectionReference<Map<String, dynamic>> _gradesRef;
   late final CollectionReference<Map<String, dynamic>> _absencesRef;
+
+  final _auth = FirebaseAuth.instance; // 👈 NEW
 
   @override
   void initState() {
@@ -60,15 +63,23 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
     // compute order for new item
     int? order = isEdit ? (doc.data()?['order'] as int? ?? 0) : null;
 
+    // NEW: status flags
+    bool confirmed = isEdit
+        ? ((doc.data()?['confirmed'] ?? false) as bool)
+        : false;
+    bool submittedForApproval = isEdit
+        ? ((doc.data()?['submittedForApproval'] ?? false) as bool)
+        : false;
+
     if (!isEdit) {
       final last = await _gradesRef
           .orderBy('order', descending: true)
           .limit(1)
           .get();
-      if (last.docs.isEmpty) {
-        order = 1;
+      if (last.docs.isNotEmpty) {
+        order = (last.docs.first.data()['order'] as int? ?? 0) + 1;
       } else {
-        order = (last.docs.first.data()['order'] ?? 0) + 1;
+        order = 1;
       }
     }
 
@@ -128,22 +139,36 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
                   return;
                 }
 
+                // Grades created/edited by admin are always "pending"
+                confirmed = false;
+
                 final data = {
                   'label': l,
                   'score': s,
                   'maxScore': m,
                   'order': order,
+                  'confirmed': confirmed,
+                  'submittedForApproval': submittedForApproval,
+                  'updatedAt': FieldValue.serverTimestamp(),
+                  if (!isEdit) 'createdAt': FieldValue.serverTimestamp(),
+                  if (!isEdit) 'createdBy': _auth.currentUser?.uid,
                 };
 
-                if (isEdit) {
-                  await _gradesRef.doc(doc.id).update(data);
-                } else {
-                  await _gradesRef.add(data);
+                try {
+                  if (isEdit) {
+                    await _gradesRef.doc(doc.id).update(data);
+                  } else {
+                    await _gradesRef.add(data);
+                  }
+                  if (context.mounted) Navigator.pop(context);
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error saving grade: $e')),
+                  );
                 }
-
-                if (mounted) Navigator.pop(context);
               },
-              child: const Text('Save'),
+              child: Text(isEdit ? 'Save changes' : 'Add grade'),
             ),
           ],
         );
@@ -225,29 +250,69 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
 
                   final doc = docs[index];
                   final data = doc.data();
+
                   final label = (data['label'] ?? '') as String;
                   final score = (data['score'] ?? 0).toDouble();
                   final maxScore = (data['maxScore'] ?? 0).toDouble();
 
+                  final bool confirmed = (data['confirmed'] ?? false) == true;
+                  final bool submitted =
+                      (data['submittedForApproval'] ?? false) == true;
+
+                  final scoreStr = score.toStringAsFixed(
+                    score == score.roundToDouble() ? 0 : 1,
+                  );
+                  final maxStr = maxScore.toStringAsFixed(
+                    maxScore == maxScore.roundToDouble() ? 0 : 1,
+                  );
+
+                  Widget statusChip;
+                  if (confirmed) {
+                    statusChip = const Chip(
+                      label: Text('Confirmed'),
+                      visualDensity: VisualDensity.compact,
+                      labelStyle: TextStyle(fontSize: 11),
+                    );
+                  } else if (submitted) {
+                    statusChip = const Chip(
+                      label: Text('Pending'),
+                      visualDensity: VisualDensity.compact,
+                      labelStyle: TextStyle(fontSize: 11),
+                    );
+                  } else {
+                    statusChip = const Chip(
+                      label: Text('Draft'),
+                      visualDensity: VisualDensity.compact,
+                      labelStyle: TextStyle(fontSize: 11),
+                    );
+                  }
+
                   return ListTile(
                     title: Text(label),
-                    subtitle: Text(
-                      '${score.toStringAsFixed(score == score.roundToDouble() ? 0 : 1)} / ${maxScore.toStringAsFixed(maxScore == maxScore.roundToDouble() ? 0 : 1)}',
-                    ),
+                    subtitle: Text('$scoreStr / $maxStr'),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        statusChip,
+                        const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(Icons.edit),
-                          onPressed: () => _showGradeDialog(doc: doc),
+                          onPressed: confirmed
+                              ? null
+                              : () => _showGradeDialog(doc: doc),
                         ),
                         IconButton(
                           icon: const Icon(
                             Icons.delete_outline,
                             color: Colors.red,
                           ),
-                          onPressed: () => _deleteGrade(doc),
+                          onPressed: confirmed ? null : () => _deleteGrade(doc),
                         ),
+                        if (!confirmed && !submitted)
+                          TextButton(
+                            onPressed: () => _requestConfirmation(doc),
+                            child: const Text('Request'),
+                          ),
                       ],
                     ),
                   );
@@ -269,6 +334,28 @@ class _AdminStudentCoursePageState extends State<AdminStudentCoursePage>
         ),
       ],
     );
+  }
+
+  Future<void> _requestConfirmation(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) async {
+    try {
+      await _gradesRef.doc(doc.id).update({
+        'submittedForApproval': true,
+        'requestedBy': _auth.currentUser?.uid,
+        'requestedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Confirmation requested.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to request confirmation: $e')),
+      );
+    }
   }
 
   // ---------- ABSENCES ----------

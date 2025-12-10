@@ -6,20 +6,22 @@ import 'admin_courses_page.dart';
 import 'admin_students_page.dart';
 import 'super_admin_registration_page.dart';
 import 'super_admin_courses_page.dart';
-import 'admin_calendar_manage_page.dart'; // 👈 NEW
+import 'admin_calendar_manage_page.dart';
 import 'super_admin_roles_page.dart';
+import 'super_admin_students_page.dart';
 
 class AdminRootPage extends StatelessWidget {
   final UserRole role;
 
   const AdminRootPage({super.key, required this.role});
 
+  bool get isSuper => role == UserRole.superAdmin;
+
   Future<void> _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
+    // no await → no "use_build_context_synchronously" lint
+    FirebaseAuth.instance.signOut();
     Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
   }
-
-  bool get isSuper => role == UserRole.superAdmin;
 
   @override
   Widget build(BuildContext context) {
@@ -44,7 +46,9 @@ class AdminRootPage extends StatelessWidget {
               icon: Icons.book_outlined,
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AdminCoursesPage()),
+                  MaterialPageRoute(
+                    builder: (_) => AdminCoursesPage(role: role),
+                  ),
                 );
               },
             ),
@@ -55,13 +59,22 @@ class AdminRootPage extends StatelessWidget {
               subtitle: 'Search and inspect student records',
               icon: Icons.people_alt_outlined,
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AdminStudentsPage()),
-                );
+                if (isSuper) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SuperAdminStudentsPage(),
+                    ),
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const AdminStudentsPage(),
+                    ),
+                  );
+                }
               },
             ),
             const SizedBox(height: 12),
-            // 👇 NEW: Calendar control (for both admin + super)
             _dashCard(
               context,
               title: 'Calendar & deadlines',
@@ -77,7 +90,6 @@ class AdminRootPage extends StatelessWidget {
                 );
               },
             ),
-
             if (isSuper) ...[
               const SizedBox(height: 12),
               _dashCard(

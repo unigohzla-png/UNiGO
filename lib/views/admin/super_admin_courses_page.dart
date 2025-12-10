@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+
 /// Super admin – manage courses & their availability next semester.
 class SuperAdminCoursesPage extends StatelessWidget {
   const SuperAdminCoursesPage({super.key});

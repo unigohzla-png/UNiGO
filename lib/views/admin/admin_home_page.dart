@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'package:flutter_ui/models/user_role.dart';        // 👈 ADD THIS
 import 'admin_courses_page.dart';
 
 class AdminHomePage extends StatelessWidget {
@@ -20,12 +20,14 @@ class AdminHomePage extends StatelessWidget {
             ),
             const SizedBox(height: 16),
 
-            // Here you can add more admin actions later (students, windows, etc.)
             ElevatedButton.icon(
               onPressed: () {
-                // Open the admin courses screen
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AdminCoursesPage()),
+                  MaterialPageRoute(
+                    builder: (_) => const AdminCoursesPage(
+                      role: UserRole.admin,   // 👈 HARD-CODED ADMIN ROLE
+                    ),
+                  ),
                 );
               },
               icon: const Icon(Icons.book),

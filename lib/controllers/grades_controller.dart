@@ -16,52 +16,80 @@ class GradesController extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    try {
-      final uid = _auth.currentUser!.uid;
+    isLoading = true;
+    notifyListeners();
 
-      final userSnap = await _db.collection('users').doc(uid).get();
-      if (!userSnap.exists) {
+    try {
+      final uid = _auth.currentUser?.uid;
+      if (uid == null) {
         courses = [];
-        isLoading = false;
-        notifyListeners();
         return;
       }
 
-      final uData = userSnap.data() ?? {};
-      final List<dynamic> rawEnrolled =
-          (uData['enrolledCourses'] ?? []) as List<dynamic>;
-      final enrolledCodes = rawEnrolled.map((e) => e.toString()).toList();
+      final userSnap = await _db.collection('users').doc(uid).get();
+      final userData = userSnap.data();
+
+      if (userData == null) {
+        courses = [];
+        return;
+      }
+
+      // Collect course codes from enrolled + previousCourses
+      final Set<String> courseCodes = {};
+
+      final enrolledRaw = (userData['enrolledCourses'] as List?) ?? [];
+      courseCodes.addAll(enrolledRaw.map((e) => e.toString()));
+
+      final prev = userData['previousCourses'];
+      if (prev is Map) {
+        for (final entry in prev.entries) {
+          courseCodes.add(entry.key.toString());
+        }
+      }
 
       final List<CourseGrades> result = [];
 
-      for (final code in enrolledCodes) {
-        // get course name
-        final courseSnap =
-            await _db.collection('courses').doc(code).get();
-        if (!courseSnap.exists) continue;
+      for (final code in courseCodes) {
+        final trimmedCode = code.trim();
+        if (trimmedCode.isEmpty) continue;
 
-        final cData = courseSnap.data() as Map<String, dynamic>;
-        final String name = (cData['name'] ?? code) as String;
+        // Get course name from courses collection
+        final courseDoc = await _db
+            .collection('courses')
+            .doc(trimmedCode)
+            .get();
+        final courseData = courseDoc.data();
+        final courseName =
+            courseData?['name']?.toString() ??
+            courseData?['title']?.toString() ??
+            trimmedCode;
 
-        // get grade items
-        final gradesQuery = await _db
+        // Load only CONFIRMED grade items
+        final gradesSnap = await _db
             .collection('users')
             .doc(uid)
             .collection('courses')
-            .doc(code)
+            .doc(trimmedCode)
             .collection('grades')
-            .orderBy('order')
+            .where('confirmed', isEqualTo: true)
             .get();
 
-        final items = gradesQuery.docs
-            .map((doc) =>
-                GradeItem.fromDoc(doc as DocumentSnapshot<Map<String, dynamic>>))
-            .toList();
+        final items =
+            gradesSnap.docs
+                .map((doc) => GradeItem.fromDoc(doc))
+                .where((g) => g.confirmed)
+                .toList()
+              ..sort((a, b) => a.order.compareTo(b.order)); // 🔹 local sort
+
+        if (items.isEmpty) {
+          // no confirmed grades for this course yet
+          continue;
+        }
 
         result.add(
           CourseGrades(
-            courseCode: code,
-            courseName: name,
+            courseCode: trimmedCode,
+            courseName: courseName,
             items: items,
           ),
         );

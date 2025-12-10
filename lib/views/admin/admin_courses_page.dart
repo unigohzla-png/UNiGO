@@ -2,10 +2,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/user_role.dart';
 import 'admin_course_content_page.dart';
 
 class AdminCoursesPage extends StatefulWidget {
-  const AdminCoursesPage({super.key});
+  final UserRole role;
+
+  const AdminCoursesPage({
+    super.key,
+    required this.role,
+  });
 
   @override
   State<AdminCoursesPage> createState() => _AdminCoursesPageState();
@@ -18,6 +24,8 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   String? _instructorName;
   bool _loadingUser = true;
 
+  bool get isSuper => widget.role == UserRole.superAdmin;
+
   @override
   void initState() {
     super.initState();
@@ -27,17 +35,18 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   Future<void> _loadInstructorName() async {
     try {
       final uid = _auth.currentUser?.uid;
-      if (uid == null) return;
+      if (uid == null) {
+        if (mounted) setState(() => _loadingUser = false);
+        return;
+      }
 
       final doc = await _db.collection('users').doc(uid).get();
       final data = doc.data() ?? {};
 
-      // try a few common fields
       final name =
-          (data['name'] ?? data['fullName'] ?? data['instructorName'])
-              as String?;
-      if (!mounted) return;
+          (data['name'] ?? data['fullName'] ?? data['instructorName']) as String?;
 
+      if (!mounted) return;
       setState(() {
         _instructorName = name;
         _loadingUser = false;
@@ -51,21 +60,27 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   @override
   Widget build(BuildContext context) {
     if (_loadingUser) {
-      return const Center(child: CircularProgressIndicator());
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
     }
 
     // Base query = all courses
-    Query<Map<String, dynamic>> query = _db
-        .collection('courses')
-        .orderBy('code');
+    Query<Map<String, dynamic>> query =
+        _db.collection('courses').orderBy('code');
 
-    // If we know instructorName, filter on it
-    if (_instructorName != null && _instructorName!.trim().isNotEmpty) {
+    // Normal admin → filter by instructorName
+    if (!isSuper &&
+        _instructorName != null &&
+        _instructorName!.trim().isNotEmpty) {
       query = query.where('instructorName', isEqualTo: _instructorName);
     }
+    // Super admin → see ALL courses (no extra filter)
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Courses')),
+      appBar: AppBar(
+        title: Text(isSuper ? 'All Courses' : 'My Courses'),
+      ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: query.snapshots(),
         builder: (context, snap) {
@@ -88,9 +103,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
           if (docs.isEmpty) {
             return Center(
               child: Text(
-                _instructorName == null
+                isSuper
                     ? 'No courses found.'
-                    : 'No courses assigned to $_instructorName.',
+                    : (_instructorName == null
+                        ? 'No courses found.'
+                        : 'No courses assigned to $_instructorName.'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 14),
               ),
@@ -136,6 +153,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => AdminCourseContentPage(
+                          role: widget.role,
                           courseCode: code,
                           courseName: name,
                         ),

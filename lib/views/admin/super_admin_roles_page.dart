@@ -443,8 +443,9 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
                           onChanged: _busy
                               ? null
                               : (value) {
-                                  if (value == null || value == user.role)
+                                  if (value == null || value == user.role) {
                                     return;
+                                  }
                                   _changeRole(user, value);
                                 },
                         ),

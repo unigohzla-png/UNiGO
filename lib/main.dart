@@ -23,9 +23,8 @@ import 'views/pages/course_page.dart';
 import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
-import 'views/admin/admin_courses_page.dart'; // add this import at top
+import 'views/admin/admin_courses_page.dart';
 import 'views/admin/admin_home_page.dart';
-
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -44,7 +43,7 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'University IT Student',
       navigatorKey: navigatorKey,
-       theme: ThemeData(
+      theme: ThemeData(
         fontFamily: 'IBMPlexSans', // 👈 same name as in pubspec.yaml
       ),
       initialRoute: '/',
@@ -53,9 +52,7 @@ class MyApp extends StatelessWidget {
         '/': (context) => const AuthRoleGate(),
         '/home': (context) => const AuthRoleGate(),
 
-        '/admin-courses': (context) => const AdminCoursesPage(), // 👈 NEW
-        '/admin-home': (context) => const AdminHomePage(), // 👈 NEW
-
+    
         // student-only sub-pages
         '/reserve-time': (context) => const ReserveTimePage(),
         '/register-courses': (context) => const RegisterCoursesPage(),

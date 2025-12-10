@@ -1,14 +1,18 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_ui/models/user_role.dart';
 
 class AdminCourseContentPage extends StatefulWidget {
   final String courseCode;
   final String courseName;
+  final UserRole role;
 
   const AdminCourseContentPage({
     super.key,
     required this.courseCode,
     required this.courseName,
+    required this.role,
   });
 
   @override
@@ -23,7 +27,6 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
   @override
   void initState() {
     super.initState();
-    // 0 = Materials, 1 = Announcements, 2 = Students
     _tabController = TabController(length: 3, vsync: this);
     _courseRef = FirebaseFirestore.instance
         .collection('courses')
@@ -243,7 +246,6 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
   }
 
   Widget? _buildFab() {
-    // Only show FAB for Materials or Announcements tabs
     if (_tabController.index == 0) {
       return FloatingActionButton(
         onPressed: _addMaterial,
@@ -256,7 +258,6 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
         child: const Icon(Icons.add),
       );
     }
-    // Students tab → no FAB (grades/absences handled in detail page)
     return null;
   }
 
@@ -292,6 +293,7 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
           _StudentsTab(
             courseCode: widget.courseCode,
             courseName: widget.courseName,
+            role: widget.role,
           ),
         ],
       ),
@@ -471,8 +473,13 @@ class _AnnouncementsTab extends StatelessWidget {
 class _StudentsTab extends StatelessWidget {
   final String courseCode;
   final String courseName;
+  final UserRole role;
 
-  const _StudentsTab({required this.courseCode, required this.courseName});
+  const _StudentsTab({
+    required this.courseCode,
+    required this.courseName,
+    required this.role,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -547,6 +554,7 @@ class _StudentsTab extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => AdminStudentCoursePage(
+                        role: role,
                         userId: d.id,
                         studentName: name,
                         studentNumber: uniId,
@@ -568,6 +576,7 @@ class _StudentsTab extends StatelessWidget {
 // ================== STUDENT COURSE PAGE (GRADES + ABSENCES) ==================
 
 class AdminStudentCoursePage extends StatelessWidget {
+  final UserRole role;
   final String userId;
   final String studentName;
   final String studentNumber;
@@ -576,12 +585,15 @@ class AdminStudentCoursePage extends StatelessWidget {
 
   const AdminStudentCoursePage({
     super.key,
+    required this.role,
     required this.userId,
     required this.studentName,
     required this.studentNumber,
     required this.courseCode,
     required this.courseName,
   });
+
+  bool get isSuper => role == UserRole.superAdmin;
 
   @override
   Widget build(BuildContext context) {
@@ -621,11 +633,12 @@ class AdminStudentCoursePage extends StatelessWidget {
                   'Grades',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                TextButton.icon(
-                  onPressed: () => _showAddGradeDialog(context, gradesCol),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                ),
+                if (!isSuper)
+                  TextButton.icon(
+                    onPressed: () => _showAddGradeDialog(context, gradesCol),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                  ),
               ],
             ),
             const SizedBox(height: 4),
@@ -676,6 +689,32 @@ class AdminStudentCoursePage extends StatelessWidget {
                         final maxScore = (data['maxScore'] ?? 0) as num;
                         final order = data['order'];
 
+                        final bool confirmed =
+                            (data['confirmed'] ?? false) == true;
+                        final bool submitted =
+                            (data['submittedForApproval'] ?? false) == true;
+
+                        Widget statusChip;
+                        if (confirmed) {
+                          statusChip = const Chip(
+                            label: Text('Confirmed'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        } else if (submitted) {
+                          statusChip = const Chip(
+                            label: Text('Pending'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        } else {
+                          statusChip = const Chip(
+                            label: Text('Draft'),
+                            visualDensity: VisualDensity.compact,
+                            labelStyle: TextStyle(fontSize: 11),
+                          );
+                        }
+
                         return ListTile(
                           dense: true,
                           title: Text(
@@ -694,28 +733,60 @@ class AdminStudentCoursePage extends StatelessWidget {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
+                              statusChip,
+                              const SizedBox(width: 6),
                               Text(
                                 '${score.toString()} / ${maxScore.toString()}',
                                 style: const TextStyle(fontSize: 13),
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, size: 18),
-                                onPressed: () => _showEditGradeDialog(
-                                  context,
-                                  gradesCol,
-                                  d.id,
-                                  data,
+                              if (!isSuper) ...[
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit_outlined,
+                                    size: 18,
+                                  ),
+                                  onPressed: confirmed
+                                      ? null
+                                      : () => _showEditGradeDialog(
+                                            context,
+                                            gradesCol,
+                                            d.id,
+                                            data,
+                                          ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.delete_outline,
-                                  size: 18,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete_outline,
+                                    size: 18,
+                                  ),
+                                  onPressed: confirmed
+                                      ? null
+                                      : () async {
+                                          await gradesCol.doc(d.id).delete();
+                                        },
                                 ),
-                                onPressed: () async {
-                                  await gradesCol.doc(d.id).delete();
-                                },
-                              ),
+                                if (!confirmed && !submitted)
+                                  TextButton(
+                                    onPressed: () =>
+                                        _requestGradeConfirmation(
+                                      context,
+                                      gradesCol,
+                                      d.id,
+                                    ),
+                                    child: const Text('Request'),
+                                  ),
+                              ] else ...[
+                                if (!confirmed && submitted)
+                                  TextButton(
+                                    onPressed: () => _confirmGrade(
+                                      context,
+                                      gradesCol,
+                                      d.id,
+                                      label,
+                                    ),
+                                    child: const Text('Confirm'),
+                                  ),
+                              ],
                             ],
                           ),
                         );
@@ -904,6 +975,9 @@ class AdminStudentCoursePage extends StatelessWidget {
                   'score': score,
                   'maxScore': maxScore,
                   if (order != null) 'order': order,
+                  'confirmed': false,
+                  'submittedForApproval': false,
+                  'createdAt': FieldValue.serverTimestamp(),
                 });
 
                 if (context.mounted) Navigator.pop(context);
@@ -997,6 +1071,7 @@ class AdminStudentCoursePage extends StatelessWidget {
                   'label': label,
                   'score': score,
                   'maxScore': maxScore,
+                  'confirmed': false,
                 };
                 if (order != null) {
                   updateData['order'] = order;
@@ -1014,6 +1089,50 @@ class AdminStudentCoursePage extends StatelessWidget {
         );
       },
     );
+  }
+
+  static Future<void> _requestGradeConfirmation(
+    BuildContext context,
+    CollectionReference<Map<String, dynamic>> gradesCol,
+    String docId,
+  ) async {
+    try {
+      await gradesCol.doc(docId).update({
+        'submittedForApproval': true,
+        'requestedAt': FieldValue.serverTimestamp(),
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Confirmation requested')));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to request confirmation: $e')),
+      );
+    }
+  }
+
+  static Future<void> _confirmGrade(
+    BuildContext context,
+    CollectionReference<Map<String, dynamic>> gradesCol,
+    String docId,
+    String label,
+  ) async {
+    try {
+      final auth = FirebaseAuth.instance;
+      await gradesCol.doc(docId).update({
+        'confirmed': true,
+        'submittedForApproval': false,
+        'confirmedBy': auth.currentUser?.uid,
+        'confirmedAt': FieldValue.serverTimestamp(),
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Confirmed $label')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to confirm grade: $e')),
+      );
+    }
   }
 
   static Future<void> _showAddAbsenceDialog(
