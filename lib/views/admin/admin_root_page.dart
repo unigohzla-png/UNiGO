@@ -9,6 +9,7 @@ import 'super_admin_courses_page.dart';
 import 'admin_calendar_manage_page.dart';
 import 'super_admin_roles_page.dart';
 import 'super_admin_students_page.dart';
+import 'super_admin_create_from_registry_page.dart'; // 👈 NEW IMPORT
 
 class AdminRootPage extends StatelessWidget {
   final UserRole role;
@@ -131,6 +132,23 @@ class AdminRootPage extends StatelessWidget {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const SuperAdminRolesPage(),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              // 👇 NEW CARD: Create user from civil registry
+              _dashCard(
+                context,
+                title: 'Create from Registry',
+                subtitle:
+                    'Use civil registry data to auto-fill and create users',
+                icon: Icons.badge_outlined,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const SuperAdminCreateFromRegistryPage(),
                     ),
                   );
                 },

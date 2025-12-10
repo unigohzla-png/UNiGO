@@ -2,6 +2,10 @@ import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../models/civil_person.dart';
+import 'civil_registry_service.dart';
+import 'admin_auth_helper.dart';
+
 class ManagedUserSummary {
   final String uid;
   final String name;
@@ -18,6 +22,21 @@ class ManagedUserSummary {
   });
 }
 
+/// Result returned to the UI after creating a user from the civil registry.
+class CreatedUserFromCivilResult {
+  final String uid;
+  final String universityId;
+  final String email;
+  final String password;
+
+  CreatedUserFromCivilResult({
+    required this.uid,
+    required this.universityId,
+    required this.email,
+    required this.password,
+  });
+}
+
 class SuperAdminUserManagementService {
   SuperAdminUserManagementService._();
 
@@ -25,6 +44,10 @@ class SuperAdminUserManagementService {
       SuperAdminUserManagementService._();
 
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+
+  // ---------------------------------------------------------------------------
+  // LOAD / ROLES
+  // ---------------------------------------------------------------------------
 
   /// Load all users with their roles.
   Future<List<ManagedUserSummary>> loadUsersWithRoles() async {
@@ -74,11 +97,12 @@ class SuperAdminUserManagementService {
     }, SetOptions(merge: true));
   }
 
-  /// Create a new user document + role in Firestore only.
-  ///
-  /// NOTE: This does NOT create the Firebase Auth user; that requires Admin SDK
-  /// (Cloud Functions / backend). We store the generated password in the user
-  /// doc so you can sync it later.
+  // ---------------------------------------------------------------------------
+  // OLD "FIRESTORE ONLY" CREATION (kept for backward compatibility)
+  // ---------------------------------------------------------------------------
+
+  /// Create a new user document + role in Firestore only (no civil registry).
+  /// Not used by the new civil-registry flow, but kept for compatibility.
   Future<String> createUserFirestoreOnly({
     required String fullName,
     required String email,
@@ -87,11 +111,8 @@ class SuperAdminUserManagementService {
     required String department,
     required String role, // 'student' | 'admin' | 'superAdmin'
   }) async {
-    // Temporary password using your rule:
-    // firstLetterOfFirstName + symbol + 4 random digits
     final password = _generatePassword(fullName);
 
-    // Generate a Firestore doc with a random ID as the uid
     final docRef = _db.collection('users').doc();
     final uid = docRef.id;
 
@@ -117,7 +138,6 @@ class SuperAdminUserManagementService {
       'courseGrades': {},
       'year': '',
       'createdAt': FieldValue.serverTimestamp(),
-      // flags for backend / manual work
       'markForAuthCreation': true,
       'initialPassword': password,
     });
@@ -126,6 +146,149 @@ class SuperAdminUserManagementService {
 
     return password;
   }
+
+  // ---------------------------------------------------------------------------
+  // NEW: CREATE FROM CIVIL REGISTRY
+  // ---------------------------------------------------------------------------
+
+  /// Create a full UniGO user from a civil registry record.
+  ///
+  /// - Reads civilRegistry by nationalId
+  /// - Generates universityId, university email, password
+  /// - Creates users/{uid} + roles/{uid}
+  /// - Links civilRegistry doc with linkedUid + linkedAt
+  /// - Increments advisor's adviseesCount in faculties/{facultyId}/professors
+  Future<CreatedUserFromCivilResult> createUserFromCivilRegistry({
+    required String nationalId,
+    required String role, // 'student' | 'admin' | 'superAdmin'
+    required String createdByUid,
+    required String facultyId,
+    required String facultyName,
+    required String majorId,
+    required String majorName,
+    required String advisorId,
+    required String advisorName,
+  }) async {
+    // 1) Load civil registry person
+    final CivilPerson? person = await CivilRegistryService.getByNationalId(
+      nationalId,
+    );
+
+    if (person == null) {
+      throw Exception('Civil registry record not found for this national ID.');
+    }
+
+    if (person.linkedUid != null && person.linkedUid!.isNotEmpty) {
+      throw Exception(
+        'This civil record is already linked to a UniGO account.',
+      );
+    }
+
+    // 2) Generate IDs + credentials
+    final String universityId = _generateUniversityId();
+    final String password = _generatePassword(person.fullName);
+    final String email = _generateUniversityEmail(
+      person.fullName,
+      universityId,
+    );
+
+    // 3) Create Firebase Auth user via secondary app
+    //    (so we get the real uid and don't log out the super admin)
+    final String uid = await AdminAuthHelper.createUser(
+      email: email,
+      password: password,
+    );
+
+    // 4) Prepare Firestore refs using that uid
+    final usersRef = _db.collection('users').doc(uid);
+    final rolesRef = _db.collection('roles').doc(uid);
+
+    // Find the civilRegistry document for this nationalId
+    // NOTE: change 'nationalId' below if your field name is different
+    final civilSnap = await _db
+        .collection('civilRegistry')
+        .where('nationalId', isEqualTo: nationalId)
+        .limit(1)
+        .get();
+
+    if (civilSnap.docs.isEmpty) {
+      throw Exception(
+        'Civil registry document not found for this national ID.',
+      );
+    }
+
+    final civilRef = civilSnap.docs.first.reference;
+
+    // advisor doc inside faculty
+    final advisorRef = _db
+        .collection('faculties')
+        .doc(facultyId)
+        .collection('professors')
+        .doc(advisorId);
+
+    final batch = _db.batch();
+
+    // 5) users/{uid}
+    batch.set(usersRef, {
+      'name': person.fullName,
+      'email': email,
+      'id': universityId,
+      'nationalId': person.nationalId,
+      'dob': person.dob, // keep as stored in registry (string)
+      'location': person.location ?? person.placeOfBirth ?? '',
+      'houseaddress': person.houseAddress ?? '',
+      'paynum': person.paynum ?? '',
+      'identifiers': person.identifiers,
+      'phone': person.primaryPhone ?? '',
+      'university': 'JU',
+      'facultyId': facultyId,
+      'faculty': facultyName,
+      'majorId': majorId,
+      'major': majorName,
+      'advisorId': advisorId,
+      'advisor': advisorName,
+      'gpa': 0.0,
+      'year': '',
+      'enrolledCourses': [],
+      'upcomingCourses': [],
+      'previousCourses': {},
+      'withdrawnCourses': [],
+      'upcomingSections': {},
+      'courseGrades': {},
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': createdByUid,
+      'initialPassword': password,
+    });
+
+    // 6) roles/{uid}
+    batch.set(rolesRef, {'role': role}, SetOptions(merge: true));
+
+    // 7) Link civilRegistry record to this uid
+    batch.update(civilRef, {
+      'linkedUid': uid,
+      'linkedAt': FieldValue.serverTimestamp(),
+      'linkedBy': createdByUid,
+    });
+
+    // 8) Increment advisor's adviseesCount (create field if missing)
+    batch.set(advisorRef, {
+      'adviseesCount': FieldValue.increment(1),
+    }, SetOptions(merge: true));
+
+    // 9) Commit batch
+    await batch.commit();
+
+    return CreatedUserFromCivilResult(
+      uid: uid,
+      universityId: universityId,
+      email: email,
+      password: password,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // DELETE USER DATA
+  // ---------------------------------------------------------------------------
 
   /// Delete a student's Firestore data (users doc, roles doc, personal calendar).
   ///
@@ -144,7 +307,6 @@ class SuperAdminUserManagementService {
       await doc.reference.delete();
     }
 
-    // TODO: delete any subcollections under users/{uid} if you add them later
     await _db.collection('users').doc(uid).delete();
 
     // Mark for Auth deletion (to be handled by backend or manually)
@@ -153,6 +315,10 @@ class SuperAdminUserManagementService {
       'requestedAt': FieldValue.serverTimestamp(),
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // HELPERS
+  // ---------------------------------------------------------------------------
 
   String _generatePassword(String fullName) {
     final trimmed = fullName.trim();
@@ -164,5 +330,27 @@ class SuperAdminUserManagementService {
     final number = random.nextInt(10000); // 0..9999
     final digits = number.toString().padLeft(4, '0');
     return '$firstLetter$symbol$digits';
+  }
+
+  /// 0 + last two digits of year + 4 random digits
+  /// e.g. 2025 → 0251234
+  String _generateUniversityId() {
+    final now = DateTime.now();
+    final yy = (now.year % 100).toString().padLeft(2, '0');
+    final random = Random.secure().nextInt(10000).toString().padLeft(4, '0');
+    return '0$yy$random';
+  }
+
+  /// three letters from first name + universityId + @ju.edu.jo
+  String _generateUniversityEmail(String fullName, String universityId) {
+    final parts = fullName.trim().split(RegExp(r'\s+'));
+    final firstName = parts.isEmpty ? 'std' : parts.first;
+    String prefix;
+    if (firstName.length >= 3) {
+      prefix = firstName.substring(0, 3).toLowerCase();
+    } else {
+      prefix = firstName.toLowerCase().padRight(3, 'x');
+    }
+    return '$prefix$universityId@ju.edu.jo';
   }
 }
