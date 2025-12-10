@@ -748,11 +748,11 @@ class AdminStudentCoursePage extends StatelessWidget {
                                   onPressed: confirmed
                                       ? null
                                       : () => _showEditGradeDialog(
-                                            context,
-                                            gradesCol,
-                                            d.id,
-                                            data,
-                                          ),
+                                          context,
+                                          gradesCol,
+                                          d.id,
+                                          data,
+                                        ),
                                 ),
                                 IconButton(
                                   icon: const Icon(
@@ -767,8 +767,7 @@ class AdminStudentCoursePage extends StatelessWidget {
                                 ),
                                 if (!confirmed && !submitted)
                                   TextButton(
-                                    onPressed: () =>
-                                        _requestGradeConfirmation(
+                                    onPressed: () => _requestGradeConfirmation(
                                       context,
                                       gradesCol,
                                       d.id,
@@ -1125,13 +1124,13 @@ class AdminStudentCoursePage extends StatelessWidget {
         'confirmedBy': auth.currentUser?.uid,
         'confirmedAt': FieldValue.serverTimestamp(),
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Confirmed $label')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Confirmed $label')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to confirm grade: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to confirm grade: $e')));
     }
   }
 
@@ -1143,7 +1142,7 @@ class AdminStudentCoursePage extends StatelessWidget {
 
     await showDialog<void>(
       context: context,
-      builder: (context) {
+      builder: (dialogCtx) {
         return AlertDialog(
           title: const Text('Add absence'),
           content: TextField(
@@ -1155,16 +1154,26 @@ class AdminStudentCoursePage extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogCtx),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () async {
-                await absencesCol.add({
-                  'date': FieldValue.serverTimestamp(),
-                  'note': noteCtrl.text.trim(),
-                });
-                if (context.mounted) Navigator.pop(context);
+                try {
+                  await absencesCol.add({
+                    // used by the stream: orderBy('date', descending: true)
+                    'date': FieldValue.serverTimestamp(),
+                    'note': noteCtrl.text.trim(),
+                  });
+
+                  // close dialog after successful save
+                  Navigator.pop(dialogCtx);
+                } catch (e) {
+                  // show error if something goes wrong (rules, network, etc.)
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to add absence: $e')),
+                  );
+                }
               },
               child: const Text('Save'),
             ),
