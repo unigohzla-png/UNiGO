@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/role_service.dart';
+
 class SuperAdminStudentWindowPage extends StatefulWidget {
   const SuperAdminStudentWindowPage({super.key});
 
@@ -13,10 +15,38 @@ class _SuperAdminStudentWindowPageState
     extends State<SuperAdminStudentWindowPage> {
   final _db = FirebaseFirestore.instance;
   final _searchCtrl = TextEditingController();
+  final RoleService _roleService = RoleService();
 
-  QuerySnapshot<Map<String, dynamic>>? _results;
+  String? _facultyId;
+  bool _facultyLoading = true;
+  String? _facultyError;
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>>? _results;
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFacultyScope();
+  }
+
+  Future<void> _loadFacultyScope() async {
+    try {
+      final id = await _roleService.getCurrentFacultyId();
+      if (!mounted) return;
+      setState(() {
+        _facultyId = id;
+        _facultyLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _facultyError = e.toString();
+        _facultyLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -34,33 +64,62 @@ class _SuperAdminStudentWindowPageState
       return;
     }
 
+    if (_facultyLoading) {
+      // still loading faculty info, avoid firing query
+      return;
+    }
+    if (_facultyId == null || _facultyId!.isEmpty) {
+      setState(() {
+        _error = 'No faculty assigned to this account.';
+        _results = null;
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
 
     try {
-      Query<Map<String, dynamic>> query;
+      // base: only students from this faculty
+      Query<Map<String, dynamic>> baseQuery = _db
+          .collection('users')
+          .where('role', isEqualTo: 'student')
+          .where('facultyId', isEqualTo: _facultyId);
 
-      // If numeric -> search by university ID
-      final idNum = int.tryParse(q);
-      if (idNum != null) {
-        query = _db.collection('users').where('id', isEqualTo: idNum);
-      } else if (q.contains('@')) {
-        // looks like email
-        query = _db.collection('users').where('email', isEqualTo: q);
-      } else {
-        // fallback: name prefix search (simple)
-        query = _db
-            .collection('users')
-            .where('name', isGreaterThanOrEqualTo: q)
-            .where('name', isLessThanOrEqualTo: '$q\uf8ff');
-      }
+      final snap = await baseQuery.limit(200).get();
 
-      final snap = await query.limit(20).get();
+      final qLower = q.toLowerCase();
+      final filtered = snap.docs.where((doc) {
+        final data = doc.data();
+        final name = (data['name'] ?? data['fullName'] ?? '')
+            .toString()
+            .toLowerCase();
+        final email =
+            (data['email'] ?? '').toString().toLowerCase();
+        final idStr = (data['id'] ?? data['universityId'] ?? '')
+            .toString()
+            .toLowerCase();
+
+        return name.contains(qLower) ||
+            email.contains(qLower) ||
+            idStr.contains(qLower);
+      }).toList();
+
+      // sort alphabetically by name for nice UX
+      filtered.sort((a, b) {
+        final an = (a.data()['name'] ?? a.data()['fullName'] ?? '')
+            .toString()
+            .toLowerCase();
+        final bn = (b.data()['name'] ?? b.data()['fullName'] ?? '')
+            .toString()
+            .toLowerCase();
+        return an.compareTo(bn);
+      });
 
       setState(() {
-        _results = snap;
+        _results = filtered;
       });
     } catch (e) {
       setState(() {
@@ -112,6 +171,7 @@ class _SuperAdminStudentWindowPageState
 
     await ref.set(data, SetOptions(merge: true));
 
+    if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Window updated')));
@@ -125,6 +185,37 @@ class _SuperAdminStudentWindowPageState
 
   @override
   Widget build(BuildContext context) {
+    if (_facultyLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Student registration windows')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_facultyError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Student registration windows')),
+        body: Center(
+          child: Text(
+            'Error loading faculty scope:\n$_facultyError',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (_facultyId == null || _facultyId!.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Student registration windows')),
+        body: const Center(
+          child: Text(
+            'No faculty assigned to this account.\nPlease set facultyId in roles/{uid}.',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Student registration windows')),
       body: Column(
@@ -152,53 +243,60 @@ class _SuperAdminStudentWindowPageState
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.search),
+                ElevatedButton.icon(
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search),
+                  label: const Text('Search'),
                   onPressed: _loading ? null : _search,
                 ),
               ],
             ),
           ),
-          if (_loading) const LinearProgressIndicator(),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Text(
                 _error!,
                 style: const TextStyle(color: Colors.red, fontSize: 12),
               ),
             ),
+          const SizedBox(height: 8),
           Expanded(
             child: _results == null
                 ? const Center(
                     child: Text('Search for a student to edit their window'),
                   )
-                : _results!.docs.isEmpty
-                ? const Center(child: Text('No students found for this query.'))
-                : ListView.separated(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _results!.docs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final doc = _results!.docs[index];
-                      final data = doc.data();
-                      final uid = doc.id;
-                      final name = (data['name'] ?? 'Unknown') as String;
-                      final id = (data['id'] ?? '').toString();
-                      final email = (data['email'] ?? '') as String;
+                : _results!.isEmpty
+                    ? const Center(child: Text('No students found for this query.'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _results!.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final doc = _results![index];
+                          final data = doc.data();
+                          final uid = doc.id;
+                          final name = (data['name'] ?? 'Unknown') as String;
+                          final id = (data['id'] ?? '').toString();
+                          final email = (data['email'] ?? '') as String;
 
-                      return _StudentWindowTile(
-                        uid: uid,
-                        name: name,
-                        id: id,
-                        email: email,
-                        db: _db,
-                        fmt: _fmtDateTime,
-                        pickDateTime: _pickDateTime,
-                        updateWindow: _updateWindow,
-                      );
-                    },
-                  ),
+                          return _StudentWindowTile(
+                            uid: uid,
+                            name: name,
+                            id: id,
+                            email: email,
+                            db: _db,
+                            fmt: _fmtDateTime,
+                            pickDateTime: _pickDateTime,
+                            updateWindow: _updateWindow,
+                          );
+                        },
+                      ),
           ),
         ],
       ),
@@ -218,8 +316,7 @@ class _StudentWindowTile extends StatelessWidget {
     required String uid,
     required DateTime? startAt,
     required DateTime? endAt,
-  })
-  updateWindow;
+  }) updateWindow;
 
   const _StudentWindowTile({
     required this.uid,
@@ -234,96 +331,148 @@ class _StudentWindowTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final winRef = db.collection('registrationWindows').doc(uid);
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: db.collection('registrationWindows').doc(uid).get(),
+      builder: (context, snapshot) {
+        final data = snapshot.data?.data();
+        DateTime? startAt;
+        DateTime? endAt;
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: winRef.snapshots(),
-      builder: (context, snap) {
-        final data = snap.data?.data();
-        final startTs = data?['startAt'] as Timestamp?;
-        final endTs = data?['endAt'] as Timestamp?;
-        final startAt = startTs?.toDate();
-        final endAt = endTs?.toDate();
+        if (data != null) {
+          final s = data['startAt'];
+          if (s is Timestamp) startAt = s.toDate();
+          final e = data['endAt'];
+          if (e is Timestamp) endAt = e.toDate();
+        }
 
-        return Material(
-          color: Colors.white,
-          elevation: 1,
-          borderRadius: BorderRadius.circular(12),
+        return Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  name,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  [
-                    if (id.isNotEmpty) 'ID: $id',
-                    if (email.isNotEmpty) email,
-                  ].join(' • '),
-                  style: const TextStyle(fontSize: 11, color: Colors.black54),
-                ),
-                const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Text('Start:', style: TextStyle(fontSize: 12)),
-                    const SizedBox(width: 4),
+                    const Icon(Icons.person, size: 20),
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Text(
-                        fmt(startAt),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black87,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            [
+                              if (id.isNotEmpty) 'ID: $id',
+                              if (email.isNotEmpty) email,
+                            ].join(' • '),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        final picked = await pickDateTime(startAt);
-                        if (picked != null) {
-                          await updateWindow(
-                            uid: uid,
-                            startAt: picked,
-                            endAt: endAt,
-                          );
-                        }
-                      },
-                      child: const Text('Change'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Text('End:', style: TextStyle(fontSize: 12)),
-                    const SizedBox(width: 4),
                     Expanded(
-                      child: Text(
-                        fmt(endAt),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.black87,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Start at',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            fmt(startAt),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
                       ),
                     ),
-                    TextButton(
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'End at',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            fmt(endAt),
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final newStart = await pickDateTime(startAt);
+                          if (newStart != null) {
+                            await updateWindow(
+                              uid: uid,
+                              startAt: newStart,
+                              endAt: endAt,
+                            );
+                          }
+                        },
+                        child: const Text('Set start'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          final newEnd = await pickDateTime(endAt);
+                          if (newEnd != null) {
+                            await updateWindow(
+                              uid: uid,
+                              startAt: startAt,
+                              endAt: newEnd,
+                            );
+                          }
+                        },
+                        child: const Text('Set end'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
                       onPressed: () async {
-                        final picked = await pickDateTime(endAt);
-                        if (picked != null) {
-                          await updateWindow(
-                            uid: uid,
-                            startAt: startAt,
-                            endAt: picked,
-                          );
-                        }
+                        await updateWindow(
+                          uid: uid,
+                          startAt: null,
+                          endAt: null,
+                        );
                       },
-                      child: const Text('Change'),
+                      child: const Text('Clear'),
                     ),
                   ],
                 ),

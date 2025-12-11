@@ -23,8 +23,6 @@ import 'views/pages/course_page.dart';
 import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
-import 'views/admin/admin_courses_page.dart';
-import 'views/admin/admin_home_page.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 

@@ -43,4 +43,25 @@ class RoleService {
       return UserRole.student;
     }
   }
+
+  /// Returns the facultyId for the currently logged in user
+  /// based on the `roles/{uid}` document.
+  Future<String?> getCurrentFacultyId() async {
+    final user = _auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final doc = await _db.collection('roles').doc(user.uid).get();
+      if (!doc.exists) return null;
+
+      final data = doc.data();
+      final facultyId = (data?['facultyId'] ?? '').toString();
+      if (facultyId.isEmpty) {
+        return null;
+      }
+      return facultyId;
+    } catch (_) {
+      return null;
+    }
+  }
 }

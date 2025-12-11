@@ -50,8 +50,19 @@ class SuperAdminUserManagementService {
   // ---------------------------------------------------------------------------
 
   /// Load all users with their roles.
-  Future<List<ManagedUserSummary>> loadUsersWithRoles() async {
-    final usersSnap = await _db.collection('users').get();
+  /// Load all users with their roles.
+  /// If [facultyId] is provided, only users in that faculty are returned.
+  Future<List<ManagedUserSummary>> loadUsersWithRoles({
+    String? facultyId,
+  }) async {
+    // Base users query
+    Query<Map<String, dynamic>> usersQuery = _db.collection('users');
+
+    if (facultyId != null && facultyId.trim().isNotEmpty) {
+      usersQuery = usersQuery.where('facultyId', isEqualTo: facultyId.trim());
+    }
+
+    final usersSnap = await usersQuery.get();
     final rolesSnap = await _db.collection('roles').get();
 
     final roleMap = <String, String>{};
@@ -82,8 +93,9 @@ class SuperAdminUserManagementService {
       );
     }
 
-    // sort alphabetically by name
-    result.sort((a, b) => a.name.compareTo(b.name));
+    // Sort alphabetically by name for nicer UX
+    result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
     return result;
   }
 
@@ -314,6 +326,30 @@ class SuperAdminUserManagementService {
       'uid': uid,
       'requestedAt': FieldValue.serverTimestamp(),
     });
+  }
+
+  /// Hard delete a UniGO user from Firestore.
+  ///
+  /// - Deletes their users/{uid} document
+  /// - Deletes their roles/{uid} document
+  /// - Deletes their registrationWindows/{uid} document (if exists)
+  ///
+  /// NOTE:
+  /// - This does NOT delete the Firebase Auth user account.
+  /// - This does NOT clean grades / enrollments / calendar events, etc.
+  ///   Those should be handled separately if needed.
+  Future<void> hardDeleteUser({required String uid}) async {
+    final batch = _db.batch();
+
+    final userRef = _db.collection('users').doc(uid);
+    final roleRef = _db.collection('roles').doc(uid);
+    final regWindowRef = _db.collection('registrationWindows').doc(uid);
+
+    batch.delete(userRef);
+    batch.delete(roleRef);
+    batch.delete(regWindowRef);
+
+    await batch.commit();
   }
 
   // ---------------------------------------------------------------------------

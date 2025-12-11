@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/super_admin_user_management_service.dart';
+import '../../services/role_service.dart';
 
 class SuperAdminRolesPage extends StatefulWidget {
   const SuperAdminRolesPage({super.key});
@@ -13,7 +14,7 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
   final _service = SuperAdminUserManagementService.instance;
 
   bool _loading = true;
-  bool _busy = false; // for inline operations (change role / delete)
+  bool _busy = false; // for change role / delete operations
   String _search = '';
 
   List<ManagedUserSummary> _users = [];
@@ -30,10 +31,32 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
     });
 
     try {
-      final users = await _service.loadUsersWithRoles();
-      setState(() {
-        _users = users;
-      });
+      final roleService = RoleService();
+      final facultyId = await roleService.getCurrentFacultyId();
+
+      if (facultyId == null || facultyId.trim().isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No faculty assigned to this account.'),
+            ),
+          );
+        }
+        if (mounted) {
+          setState(() {
+            _users = [];
+          });
+        }
+        return;
+      }
+
+      final users =
+          await _service.loadUsersWithRoles(facultyId: facultyId.trim());
+      if (mounted) {
+        setState(() {
+          _users = users;
+        });
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -79,16 +102,11 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
           );
         }
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Role updated to $newRole for ${user.name}')),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update role: $e')));
+        ).showSnackBar(SnackBar(content: Text('Failed to change role: $e')));
       }
     } finally {
       if (mounted) {
@@ -100,13 +118,17 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
   }
 
   Future<void> _deleteUser(ManagedUserSummary user) async {
+    if (_busy) return;
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete user'),
         content: Text(
-          'Are you sure you want to delete "${user.name}" '
-          'and all of their data? This cannot be undone.',
+          'Are you sure you want to delete "${user.name.isEmpty ? user.email : user.name}"?\n'
+          'This will remove their user document and role.\n\n'
+          'Auth account and other references (like grades, calendar events, etc.) '
+          'are NOT automatically cleaned.',
         ),
         actions: [
           TextButton(
@@ -124,21 +146,16 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
 
     if (confirm != true) return;
 
-    if (_busy) return;
-
     setState(() {
       _busy = true;
     });
 
     try {
-      await _service.deleteUserDataFirestore(user.uid);
-      setState(() {
-        _users.removeWhere((u) => u.uid == user.uid);
-      });
+      await _service.hardDeleteUser(uid: user.uid);
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('User "${user.name}" deleted')));
+        setState(() {
+          _users.removeWhere((u) => u.uid == user.uid);
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -152,199 +169,6 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
           _busy = false;
         });
       }
-    }
-  }
-
-  Future<void> _showCreateUserDialog() async {
-    final fullNameCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final idCtrl = TextEditingController();
-    final majorCtrl = TextEditingController();
-    final departmentCtrl = TextEditingController();
-    String selectedRole = 'student';
-
-    final createdPassword = await showDialog<String>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocalState) {
-            return AlertDialog(
-              title: const Text('Create new user'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextField(
-                      controller: fullNameCtrl,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Full name',
-                        hintText: 'e.g. Hamzeh Ahmad Ali Alsyouf',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: emailCtrl,
-                      textInputAction: TextInputAction.next,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        hintText: 'student@example.edu',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: idCtrl,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'University ID',
-                        hintText: 'e.g. 8110211720',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: majorCtrl,
-                      textInputAction: TextInputAction.next,
-                      decoration: const InputDecoration(
-                        labelText: 'Major',
-                        hintText: 'e.g. Computer Science',
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: departmentCtrl,
-                      textInputAction: TextInputAction.done,
-                      decoration: const InputDecoration(
-                        labelText: 'Faculty / Department',
-                        hintText:
-                            'e.g. King Abdullah II School of Information Technology',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Text(
-                          'Role:',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(width: 16),
-                        DropdownButton<String>(
-                          value: selectedRole,
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'student',
-                              child: Text('Student'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'admin',
-                              child: Text('Admin'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'superAdmin',
-                              child: Text('Super Admin'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val == null) return;
-                            setLocalState(() {
-                              selectedRole = val;
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(ctx).pop(null),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    final fullName = fullNameCtrl.text.trim();
-                    final email = emailCtrl.text.trim();
-                    final uniId = idCtrl.text.trim();
-                    final major = majorCtrl.text.trim();
-                    final dept = departmentCtrl.text.trim();
-
-                    if (fullName.isEmpty ||
-                        email.isEmpty ||
-                        uniId.isEmpty ||
-                        major.isEmpty ||
-                        dept.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please fill all fields')),
-                      );
-                      return;
-                    }
-
-                    try {
-                      final password = await _service.createUserFirestoreOnly(
-                        fullName: fullName,
-                        email: email,
-                        universityId: uniId,
-                        major: major,
-                        department: dept,
-                        role: selectedRole,
-                      );
-
-                      Navigator.of(ctx).pop(password);
-                    } catch (e) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to create user: $e')),
-                      );
-                    }
-                  },
-                  child: const Text('Create'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-
-    if (createdPassword != null) {
-      // Reload users list so the new user appears
-      await _loadUsers();
-
-      if (!mounted) return;
-
-      await showDialog<void>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('User created'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'The user has been created in Firestore.\n\n'
-                'Temporary password:',
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                createdPassword,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text('Please share this password securely with the user.'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
     }
   }
 
@@ -363,11 +187,7 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _busy ? null : _showCreateUserDialog,
-        icon: const Icon(Icons.person_add_alt_1),
-        label: const Text('Add user'),
-      ),
+      // No FAB – creation is via "Create from registry"
       body: Column(
         children: [
           Padding(
@@ -386,13 +206,17 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
             ),
           ),
           if (_loading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
+            const Expanded(
+              child: Center(
+                child: CircularProgressIndicator(),
+              ),
+            )
           else if (users.isEmpty)
             const Expanded(
               child: Center(
                 child: Text(
-                  'No users found.\nUse "Add user" to create a new account.',
-                  textAlign: TextAlign.center,
+                  'No users found for this faculty.',
+                  style: TextStyle(fontSize: 13, color: Colors.black54),
                 ),
               ),
             )
@@ -403,22 +227,26 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final user = users[index];
+                  final leadingLetter = user.name.isNotEmpty
+                      ? user.name[0].toUpperCase()
+                      : (user.email.isNotEmpty
+                          ? user.email[0].toUpperCase()
+                          : '?');
+
                   return ListTile(
+                    leading: CircleAvatar(
+                      child: Text(leadingLetter),
+                    ),
                     title: Text(
                       user.name.isEmpty ? '(No name)' : user.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     subtitle: Text(
-                      '${user.email.isEmpty ? 'No email' : user.email} · '
-                      'ID: ${user.id.isEmpty ? '—' : user.id}',
-                    ),
-                    leading: CircleAvatar(
-                      child: Text(
-                        user.name.isEmpty
-                            ? '?'
-                            : user.name.characters.first.toUpperCase(),
-                      ),
+                      '${user.email.isEmpty ? "No email" : user.email} · '
+                      'ID: ${user.id.isEmpty ? "—" : user.id}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -442,20 +270,18 @@ class _SuperAdminRolesPageState extends State<SuperAdminRolesPage> {
                           ],
                           onChanged: _busy
                               ? null
-                              : (value) {
-                                  if (value == null || value == user.role) {
-                                    return;
-                                  }
-                                  _changeRole(user, value);
+                              : (val) {
+                                  if (val == null || val == user.role) return;
+                                  _changeRole(user, val);
                                 },
                         ),
-                        const SizedBox(width: 8),
                         IconButton(
                           icon: const Icon(
                             Icons.delete_outline,
                             color: Colors.redAccent,
                           ),
-                          onPressed: _busy ? null : () => _deleteUser(user),
+                          onPressed:
+                              _busy ? null : () => _deleteUser(user),
                           tooltip: 'Delete user',
                         ),
                       ],

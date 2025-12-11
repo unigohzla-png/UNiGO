@@ -24,6 +24,8 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
   late final TabController _tabController;
   late final DocumentReference<Map<String, dynamic>> _courseRef;
 
+  bool get isSuper => widget.role == UserRole.superAdmin; // 👈 add this
+
   @override
   void initState() {
     super.initState();
@@ -246,6 +248,9 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
   }
 
   Widget? _buildFab() {
+    // Super admin is read-only on course content
+    if (isSuper) return null;
+
     if (_tabController.index == 0) {
       return FloatingActionButton(
         onPressed: _addMaterial,
@@ -282,11 +287,13 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
         children: [
           _MaterialsTab(
             courseRef: _courseRef,
+            canEdit: !isSuper,
             onDelete: (id) =>
                 _deleteDoc(_courseRef.collection('materials'), id),
           ),
           _AnnouncementsTab(
             courseRef: _courseRef,
+            canEdit: !isSuper,
             onDelete: (id) =>
                 _deleteDoc(_courseRef.collection('announcements'), id),
           ),
@@ -307,8 +314,13 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
 class _MaterialsTab extends StatelessWidget {
   final DocumentReference<Map<String, dynamic>> courseRef;
   final Future<void> Function(String id) onDelete;
+  final bool canEdit;
 
-  const _MaterialsTab({required this.courseRef, required this.onDelete});
+  const _MaterialsTab({
+    required this.courseRef,
+    required this.canEdit,
+    required this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -351,10 +363,12 @@ class _MaterialsTab extends StatelessWidget {
                 subtitle: meta.isEmpty
                     ? null
                     : Text(meta, style: const TextStyle(fontSize: 12)),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => onDelete(doc.id),
-                ),
+                trailing: canEdit
+                    ? IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => onDelete(doc.id),
+                      )
+                    : null,
               ),
             );
           },
@@ -369,8 +383,13 @@ class _MaterialsTab extends StatelessWidget {
 class _AnnouncementsTab extends StatelessWidget {
   final DocumentReference<Map<String, dynamic>> courseRef;
   final Future<void> Function(String id) onDelete;
+  final bool canEdit;
 
-  const _AnnouncementsTab({required this.courseRef, required this.onDelete});
+  const _AnnouncementsTab({
+    required this.courseRef,
+    required this.canEdit,
+    required this.onDelete,
+  });
 
   String _fmtDate(Timestamp? ts) {
     if (ts == null) return '';
@@ -455,10 +474,12 @@ class _AnnouncementsTab extends StatelessWidget {
                       ),
                   ],
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => onDelete(doc.id),
-                ),
+                trailing: canEdit
+                    ? IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => onDelete(doc.id),
+                      )
+                    : null,
               ),
             );
           },
@@ -817,11 +838,13 @@ class AdminStudentCoursePage extends StatelessWidget {
                   'Absences',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                 ),
-                TextButton.icon(
-                  onPressed: () => _showAddAbsenceDialog(context, absencesCol),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add'),
-                ),
+                if (!isSuper)
+                  TextButton.icon(
+                    onPressed: () =>
+                        _showAddAbsenceDialog(context, absencesCol),
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add'),
+                  ),
               ],
             ),
             const SizedBox(height: 4),

@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/user_role.dart';
+import '../../services/role_service.dart'; // 👈 add this
 
 class AdminCalendarManagePage extends StatefulWidget {
   final UserRole role;
@@ -17,7 +18,9 @@ class AdminCalendarManagePage extends StatefulWidget {
 class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final RoleService _roleService = RoleService(); // 👈 new
 
+  String? _facultyId; // 👈 new
   bool _loadingCourses = true;
   bool _loadingHeader = true;
   String? _headerError;
@@ -59,21 +62,32 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
         throw Exception('Not logged in');
       }
 
+      // ===== facultyId for this admin / super admin =====
+      final facId = await _roleService.getCurrentFacultyId();
+      if (facId == null || facId.trim().isEmpty) {
+        throw Exception(
+          'No faculty assigned to this account. Please set facultyId in roles/{uid}.',
+        );
+      }
+      _facultyId = facId.trim();
+
       // ----- load user doc to get instructorName (for normal admins) -----
       final userSnap = await _db.collection('users').doc(uid).get();
       final userData = userSnap.data() ?? {};
 
-      _instructorName = (userData['instructorName'] ??
-              userData['fullName'] ??
-              userData['name'] ??
-              '')
-          .toString();
+      _instructorName =
+          (userData['instructorName'] ??
+                  userData['fullName'] ??
+                  userData['name'] ??
+                  '')
+              .toString();
 
       _loadingHeader = false;
 
-      // ----- load courses -----
-      Query<Map<String, dynamic>> q =
-          _db.collection('courses').orderBy('code');
+      // ----- load courses for THIS faculty -----
+      Query<Map<String, dynamic>> q = _db
+          .collection('courses')
+          .where('facultyId', isEqualTo: _facultyId);
 
       // normal admin → only their courses
       if (!_isSuper &&
@@ -81,6 +95,8 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
           _instructorName!.trim().isNotEmpty) {
         q = q.where('instructorName', isEqualTo: _instructorName);
       }
+
+      q = q.orderBy('code');
 
       final snap = await q.get();
 
@@ -126,8 +142,16 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
   Future<void> _createItem() async {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a title')));
+      return;
+    }
+
+    // No faculty → don't create cross-faculty items
+    if (_facultyId == null || _facultyId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a title')),
+        const SnackBar(content: Text('This account has no faculty assigned.')),
       );
       return;
     }
@@ -137,17 +161,17 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
     final String finalScope = _isSuper ? _scope : 'course';
 
     if (finalScope == 'course' && _selectedCourse == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a course')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please select a course')));
       return;
     }
 
     final user = _auth.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Not logged in')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Not logged in')));
       return;
     }
 
@@ -163,21 +187,17 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
         'date': Timestamp.fromDate(normalized),
         'type': finalType, // "Deadline" or "Event"
         'scope': finalScope, // "global" or "course"
-        'courseCode':
-            finalScope == 'course' ? _selectedCourse?.code : null,
+        'courseCode': finalScope == 'course' ? _selectedCourse?.code : null,
+        'facultyId': _facultyId, // 👈 key piece
         'ownerId': user.uid,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
       _titleCtrl.clear();
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '$finalType added successfully',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$finalType added successfully')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -188,10 +208,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
     }
   }
 
-  Future<void> _deleteItem(
-    String id,
-    String ownerId,
-  ) async {
+  Future<void> _deleteItem(String id, String ownerId) async {
     final user = _auth.currentUser;
     if (user == null) return;
 
@@ -200,9 +217,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
 
     if (!canDelete) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You can only delete items you created.'),
-        ),
+        const SnackBar(content: Text('You can only delete items you created.')),
       );
       return;
     }
@@ -219,10 +234,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -235,13 +247,12 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
 
   @override
   Widget build(BuildContext context) {
-    final title =
-        _isSuper ? 'Calendar – events & deadlines' : 'Calendar – deadlines';
+    final title = _isSuper
+        ? 'Calendar – events & deadlines'
+        : 'Calendar – deadlines';
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title),
-      ),
+      appBar: AppBar(title: Text(title)),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -282,10 +293,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
           children: [
             const Text(
               'Create new item',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w700,
-              ),
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
 
@@ -293,10 +301,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
             if (_isSuper) ...[
               Row(
                 children: [
-                  const Text(
-                    'Type:',
-                    style: TextStyle(fontSize: 13),
-                  ),
+                  const Text('Type:', style: TextStyle(fontSize: 13)),
                   const SizedBox(width: 8),
                   ChoiceChip(
                     label: const Text('Deadline'),
@@ -328,10 +333,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
             if (_isSuper) ...[
               Row(
                 children: [
-                  const Text(
-                    'Scope:',
-                    style: TextStyle(fontSize: 13),
-                  ),
+                  const Text('Scope:', style: TextStyle(fontSize: 13)),
                   const SizedBox(width: 8),
                   ChoiceChip(
                     label: const Text('Course'),
@@ -383,8 +385,10 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
                       .map(
                         (c) => DropdownMenuItem<_CourseOption>(
                           value: c,
-                          child: Text('${c.code} – ${c.name}',
-                              overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            '${c.code} – ${c.name}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                       )
                       .toList(),
@@ -430,10 +434,9 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed:
-                    _loadingCourses && (_scope == 'course' || !_isSuper)
-                        ? null
-                        : _createItem,
+                onPressed: _loadingCourses && (_scope == 'course' || !_isSuper)
+                    ? null
+                    : _createItem,
                 icon: const Icon(Icons.save),
                 label: const Text('Save item'),
               ),
@@ -447,11 +450,27 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
   Widget _buildExistingList() {
     final user = _auth.currentUser;
 
+    if (_loadingHeader) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_facultyId == null || _facultyId!.isEmpty) {
+      return const Center(
+        child: Text(
+          'No faculty assigned to this account.\nCannot show events.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: Colors.black54),
+        ),
+      );
+    }
+
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: _db
           .collection('calendarEvents')
+          .where('facultyId', isEqualTo: _facultyId) // 👈 filter by faculty
           .orderBy('date')
           .snapshots(),
+
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -535,8 +554,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
             final bool canDelete =
                 _isSuper || (myUid != null && myUid == ownerId);
 
-            final typeColor =
-                type == 'Event' ? Colors.green : Colors.redAccent;
+            final typeColor = type == 'Event' ? Colors.green : Colors.redAccent;
             final scopeLabel = scope == 'global'
                 ? 'Global'
                 : (courseCode ?? 'Course');
@@ -545,11 +563,12 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
                 '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
             return ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 4,
+                vertical: 0,
+              ),
               leading: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: typeColor.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(12),
@@ -573,8 +592,10 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
               ),
               trailing: canDelete
                   ? IconButton(
-                      icon: const Icon(Icons.delete_outline,
-                          color: Colors.redAccent),
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.redAccent,
+                      ),
                       onPressed: () => _deleteItem(id, ownerId),
                     )
                   : null,

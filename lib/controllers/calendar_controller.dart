@@ -25,6 +25,9 @@ class CalendarController extends ChangeNotifier {
   /// Current user id (student)
   String? _currentUserId;
 
+  /// Current student's faculty
+  String _myFacultyId = '';
+
   StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _eventsSub;
 
   static const months = [
@@ -83,6 +86,12 @@ class CalendarController extends ChangeNotifier {
     try {
       final snap = await _db.collection('users').doc(user.uid).get();
       final data = snap.data() ?? <String, dynamic>{};
+
+      // 👇 NEW: store student's facultyId
+      _myFacultyId = (data['facultyId'] ?? '').toString();
+      if (kDebugMode) {
+        print('[Calendar] myFacultyId = $_myFacultyId');
+      }
 
       final temp = <String>{};
 
@@ -154,55 +163,69 @@ class CalendarController extends ChangeNotifier {
         .orderBy('date')
         .snapshots()
         .listen(
-      (snapshot) {
-        if (kDebugMode) {
-          print(
-              '[Calendar] snapshot received, docs = ${snapshot.docs.length}');
-        }
-
-        final all =
-            snapshot.docs.map((doc) => CalendarEvent.fromDoc(doc)).toList();
-
-        final String? uid = _currentUserId ?? _auth.currentUser?.uid;
-        final Set<String> courseCodes = myCourseCodes;
-
-        events = all.where((e) {
-          final scope = e.scope;
-
-          // 1) Personal → only owner sees
-          if (scope == 'personal') {
-            return uid != null && e.ownerId == uid;
-          }
-
-          // 2) Course-scoped items (deadlines / events per course)
-          if (scope == 'course') {
-            // ❌ If student has NO courses, they should see NO course items.
-            if (courseCodes.isEmpty) {
-              return false;
+          (snapshot) {
+            if (kDebugMode) {
+              print(
+                '[Calendar] snapshot received, docs = ${snapshot.docs.length}',
+              );
             }
 
-            if (e.courseCode == null || e.courseCode!.isEmpty) {
-              return false;
+            final all = snapshot.docs
+                .map((doc) => CalendarEvent.fromDoc(doc))
+                .toList();
+
+            final String? uid = _currentUserId ?? _auth.currentUser?.uid;
+            final Set<String> courseCodes = myCourseCodes;
+            final String facultyId = _myFacultyId;
+
+            events = all.where((e) {
+              final scope = e.scope;
+
+              // 1) Personal → only owner sees, ignore faculty
+              if (scope == 'personal') {
+                return uid != null && e.ownerId == uid;
+              }
+
+              // 2) For non-personal items, respect faculty if both sides have it
+              if (e.facultyId != null &&
+                  e.facultyId!.isNotEmpty &&
+                  facultyId.isNotEmpty &&
+                  e.facultyId != facultyId) {
+                // Event belongs to another faculty → hide
+                return false;
+              }
+
+              // 3) Course-scoped items (deadlines / events per course)
+              if (scope == 'course') {
+                // ❌ If student has NO courses, they should see NO course items.
+                if (courseCodes.isEmpty) {
+                  return false;
+                }
+
+                if (e.courseCode == null || e.courseCode!.isEmpty) {
+                  return false;
+                }
+                return courseCodes.contains(e.courseCode);
+              }
+
+              // 4) Global (or legacy records with no scope) → everyone in that faculty sees
+              return true;
+            }).toList();
+
+            if (kDebugMode) {
+              print(
+                '[Calendar] visible events after filter = ${events.length}',
+              );
             }
-            return courseCodes.contains(e.courseCode);
-          }
 
-          // 3) Global (or legacy records with no scope) → everyone sees
-          return true;
-        }).toList();
-
-        if (kDebugMode) {
-          print('[Calendar] visible events after filter = ${events.length}');
-        }
-
-        notifyListeners();
-      },
-      onError: (e) {
-        if (kDebugMode) {
-          print('[Calendar] error listening to calendarEvents: $e');
-        }
-      },
-    );
+            notifyListeners();
+          },
+          onError: (e) {
+            if (kDebugMode) {
+              print('[Calendar] error listening to calendarEvents: $e');
+            }
+          },
+        );
   }
 
   @override
@@ -298,6 +321,7 @@ class CalendarController extends ChangeNotifier {
         'type': 'Reminder',
         'scope': 'personal',
         'ownerId': user.uid,
+        'facultyId': _myFacultyId, // keep data consistent
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -311,6 +335,7 @@ class CalendarController extends ChangeNotifier {
           scope: 'personal',
           ownerId: user.uid,
           courseCode: null,
+          facultyId: _myFacultyId.isEmpty ? null : _myFacultyId,
         ),
       ];
       notifyListeners();
@@ -366,6 +391,7 @@ class CalendarEvent {
   final String scope; // personal / course / global (or legacy)
   final String ownerId;
   final String? courseCode;
+  final String? facultyId;
 
   CalendarEvent({
     required this.id,
@@ -375,6 +401,7 @@ class CalendarEvent {
     required this.scope,
     required this.ownerId,
     this.courseCode,
+    this.facultyId,
   });
 
   factory CalendarEvent.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -390,6 +417,8 @@ class CalendarEvent {
       date = DateTime.now();
     }
 
+    final rawFaculty = (data['facultyId'] ?? '').toString();
+
     return CalendarEvent(
       id: doc.id,
       title: (data['title'] ?? '').toString(),
@@ -398,6 +427,7 @@ class CalendarEvent {
       scope: (data['scope'] ?? 'global').toString(),
       ownerId: (data['ownerId'] ?? '').toString(),
       courseCode: data['courseCode']?.toString(),
+      facultyId: rawFaculty.isEmpty ? null : rawFaculty,
     );
   }
 }

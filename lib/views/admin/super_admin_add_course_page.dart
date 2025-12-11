@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import '../../services/role_service.dart';
 
 class SuperAdminAddCoursePage extends StatefulWidget {
   const SuperAdminAddCoursePage({super.key});
@@ -11,6 +12,7 @@ class SuperAdminAddCoursePage extends StatefulWidget {
 
 class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
   final _db = FirebaseFirestore.instance;
+  final RoleService _roleService = RoleService(); // 👈 add this
 
   final _codeCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
@@ -75,38 +77,28 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
       return;
     }
 
-    if (_selectedDepartments.isEmpty) {
-      _showSnack('Select at least one department.');
-      return;
-    }
-
-    if (_sections.isEmpty) {
-      _showSnack('Add at least one section.');
-      return;
-    }
-
-    for (final s in _sections) {
-      if (!s.isValid) {
-        _showSnack(
-          'Each section needs: ID, doctor name, location, at least one day, start time and end time.',
-        );
-        return;
-      }
-    }
-
     setState(() => _saving = true);
 
     try {
+      // Get faculty for this super admin
+      final facultyId = await _roleService.getCurrentFacultyId();
+      if (facultyId == null || facultyId.trim().isEmpty) {
+        _showSnack('No faculty assigned to this account.');
+        setState(() => _saving = false);
+        return;
+      }
       // build sections array
       final sectionsData = _sections
-          .map((s) => {
-                'id': s.id,
-                'doctorName': s.doctorName,
-                'location': s.location,
-                'days': s.days,
-                'startTime': s.startTime,
-                'endTime': s.endTime,
-              })
+          .map(
+            (s) => {
+              'id': s.id,
+              'doctorName': s.doctorName,
+              'location': s.location,
+              'days': s.days,
+              'startTime': s.startTime,
+              'endTime': s.endTime,
+            },
+          )
           .toList();
 
       final data = <String, dynamic>{
@@ -118,6 +110,9 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
         'department': _selectedDepartments.toList(),
         'pre_Requisite': _prereqs,
         'sections': sectionsData,
+        'facultyId': facultyId.trim(), // 👈 tie course to faculty
+        'availableNextSemester': false, // default, can be toggled later
+        'createdAt': FieldValue.serverTimestamp(),
       };
 
       final docRef = _db.collection('courses').doc(code);
@@ -143,9 +138,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
   }
 
   void _showSnack(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _addPrereqFromField() {
@@ -178,9 +171,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Add new course'),
-      ),
+      appBar: AppBar(title: const Text('Add new course')),
       body: _saving
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -227,9 +218,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
                   // --- type ---
                   DropdownButtonFormField<String>(
                     initialValue: _selectedType,
-                    decoration: const InputDecoration(
-                      labelText: 'Course type',
-                    ),
+                    decoration: const InputDecoration(labelText: 'Course type'),
                     items: _courseTypes
                         .map(
                           (t) => DropdownMenuItem<String>(
@@ -248,10 +237,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
                   // --- departments ---
                   const Text(
                     'Departments',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   Wrap(
@@ -279,10 +265,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
                   // --- pre requisites ---
                   const Text(
                     'Pre-requisite courses (codes)',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
                   Row(
@@ -323,10 +306,7 @@ class _SuperAdminAddCoursePageState extends State<SuperAdminAddCoursePage> {
                   // --- sections ---
                   const Text(
                     'Sections',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                   ),
                   const SizedBox(height: 8),
                   Column(
@@ -396,15 +376,7 @@ class _SectionCard extends StatelessWidget {
     required this.onChanged,
   });
 
-  static const _weekDays = [
-    'Sun',
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-  ];
+  static const _weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   @override
   Widget build(BuildContext context) {
@@ -437,10 +409,9 @@ class _SectionCard extends StatelessWidget {
               decoration: const InputDecoration(
                 labelText: 'Section ID (e.g. 1)',
               ),
-              controller: TextEditingController(text: section.id)
-                ..selection = TextSelection.collapsed(
-                  offset: section.id.length,
-                ),
+              controller: TextEditingController(
+                text: section.id,
+              )..selection = TextSelection.collapsed(offset: section.id.length),
               onChanged: (v) {
                 section.id = v;
                 onChanged();
@@ -448,9 +419,7 @@ class _SectionCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TextField(
-              decoration: const InputDecoration(
-                labelText: 'Doctor name',
-              ),
+              decoration: const InputDecoration(labelText: 'Doctor name'),
               controller: TextEditingController(text: section.doctorName)
                 ..selection = TextSelection.collapsed(
                   offset: section.doctorName.length,
@@ -513,10 +482,7 @@ class _SectionCard extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(
               'Days',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 4),
             Wrap(

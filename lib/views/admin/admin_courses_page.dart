@@ -3,15 +3,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/user_role.dart';
+import '../../services/role_service.dart';
 import 'admin_course_content_page.dart';
 
 class AdminCoursesPage extends StatefulWidget {
   final UserRole role;
 
-  const AdminCoursesPage({
-    super.key,
-    required this.role,
-  });
+  const AdminCoursesPage({super.key, required this.role});
 
   @override
   State<AdminCoursesPage> createState() => _AdminCoursesPageState();
@@ -20,8 +18,10 @@ class AdminCoursesPage extends StatefulWidget {
 class _AdminCoursesPageState extends State<AdminCoursesPage> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+  final RoleService _roleService = RoleService();
 
   String? _instructorName;
+  String? _facultyId;
   bool _loadingUser = true;
 
   bool get isSuper => widget.role == UserRole.superAdmin;
@@ -29,58 +29,77 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   @override
   void initState() {
     super.initState();
-    _loadInstructorName();
+    _initUserContext();
   }
 
-  Future<void> _loadInstructorName() async {
+  /// Loads:
+  /// - instructorName from users/{uid}
+  /// - facultyId from roles/{uid}
+  Future<void> _initUserContext() async {
     try {
       final uid = _auth.currentUser?.uid;
-      if (uid == null) {
-        if (mounted) setState(() => _loadingUser = false);
-        return;
+
+      String? instructorName;
+      if (uid != null) {
+        final doc = await _db.collection('users').doc(uid).get();
+        final data = doc.data() ?? {};
+
+        instructorName =
+            (data['name'] ?? data['fullName'] ?? data['instructorName'])
+                ?.toString();
       }
 
-      final doc = await _db.collection('users').doc(uid).get();
-      final data = doc.data() ?? {};
-
-      final name =
-          (data['name'] ?? data['fullName'] ?? data['instructorName']) as String?;
+      final facultyId = await _roleService.getCurrentFacultyId();
 
       if (!mounted) return;
       setState(() {
-        _instructorName = name;
+        _instructorName = instructorName;
+        _facultyId = facultyId;
         _loadingUser = false;
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingUser = false);
+      setState(() {
+        _loadingUser = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loadingUser) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_facultyId == null || _facultyId!.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: Text(isSuper ? 'All Courses' : 'My Courses')),
+        body: const Center(
+          child: Text(
+            'No faculty assigned to this account.\n'
+            'Please set facultyId in roles/{uid} & users/{uid}.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ),
       );
     }
 
-    // Base query = all courses
-    Query<Map<String, dynamic>> query =
-        _db.collection('courses').orderBy('code');
+    // Base query = all courses in THIS faculty
+    Query<Map<String, dynamic>> query = _db
+        .collection('courses')
+        .where('facultyId', isEqualTo: _facultyId)
+        .orderBy('code');
 
-    // Normal admin → filter by instructorName
+    // Normal admin → filter further by instructorName
     if (!isSuper &&
         _instructorName != null &&
         _instructorName!.trim().isNotEmpty) {
       query = query.where('instructorName', isEqualTo: _instructorName);
     }
-    // Super admin → see ALL courses (no extra filter)
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(isSuper ? 'All Courses' : 'My Courses'),
-      ),
+      appBar: AppBar(title: Text(isSuper ? 'All Courses' : 'My Courses')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: query.snapshots(),
         builder: (context, snap) {
@@ -104,12 +123,13 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
             return Center(
               child: Text(
                 isSuper
-                    ? 'No courses found.'
-                    : (_instructorName == null
-                        ? 'No courses found.'
-                        : 'No courses assigned to $_instructorName.'),
+                    ? 'No courses found for this faculty.'
+                    : (_instructorName == null ||
+                          _instructorName!.trim().isEmpty)
+                    ? 'No courses assigned to this instructor.'
+                    : 'No courses assigned to $_instructorName.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 14),
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
               ),
             );
           }
@@ -122,7 +142,7 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               final doc = docs[index];
               final data = doc.data();
               final code = data['code']?.toString() ?? doc.id;
-              final name = (data['name'] ?? 'Untitled course') as String;
+              final name = (data['name'] ?? 'Untitled course').toString();
               final credits = data['credits'];
               final instructor = data['instructorName']?.toString() ?? '';
 
@@ -153,9 +173,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => AdminCourseContentPage(
-                          role: widget.role,
                           courseCode: code,
                           courseName: name,
+                          role: widget.role,
                         ),
                       ),
                     );

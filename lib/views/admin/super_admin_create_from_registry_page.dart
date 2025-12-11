@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -9,6 +10,7 @@ import '../../services/civil_registry_service.dart';
 import '../../services/faculty_service.dart';
 import '../../services/professor_service.dart';
 import '../../services/super_admin_user_management_service.dart';
+import '../../services/role_service.dart';
 
 class SuperAdminCreateFromRegistryPage extends StatefulWidget {
   const SuperAdminCreateFromRegistryPage({super.key});
@@ -23,7 +25,9 @@ class _SuperAdminCreateFromRegistryPageState
   final _formKey = GlobalKey<FormState>();
   final _nationalIdCtrl = TextEditingController();
 
+  // Role of the user we are creating
   String _role = 'student';
+
   CivilPerson? _loadedPerson;
   bool _isLoading = false;
   bool _isCreating = false;
@@ -43,10 +47,74 @@ class _SuperAdminCreateFromRegistryPageState
   bool _loadingMajors = false;
   bool _loadingAdvisors = false;
 
+  // Faculty scope for this super admin
+  final RoleService _roleService = RoleService();
+  String? _currentFacultyId;
+  bool _loadingFacultyScope = true;
+
   @override
   void initState() {
     super.initState();
-    _loadFaculties();
+    _initFacultyScope();
+  }
+
+  @override
+  void dispose() {
+    _nationalIdCtrl.dispose();
+    super.dispose();
+  }
+
+  /// Determine which faculty this super admin belongs to and
+  /// restrict the faculties list to that single faculty.
+  Future<void> _initFacultyScope() async {
+    setState(() {
+      _loadingFacultyScope = true;
+    });
+
+    final facultyId = await _roleService.getCurrentFacultyId();
+
+    if (!mounted) return;
+
+    if (facultyId == null || facultyId.isEmpty) {
+      // Fallback: no faculty assigned → load all faculties (old behaviour)
+      await _loadFaculties();
+      if (!mounted) return;
+      setState(() {
+        _currentFacultyId = null;
+        _loadingFacultyScope = false;
+      });
+      return;
+    }
+
+    _currentFacultyId = facultyId;
+
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('faculties')
+          .doc(facultyId)
+          .get();
+
+      if (!doc.exists) {
+        // If faculty document is missing, fallback to all
+        await _loadFaculties();
+      } else {
+        final faculty = Faculty.fromDoc(doc);
+
+        setState(() {
+          _faculties = [faculty];
+          _selectedFaculty = faculty;
+        });
+
+        // Automatically load majors/advisors for this faculty
+        await _loadMajorsForFaculty(faculty);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loadingFacultyScope = false;
+        });
+      }
+    }
   }
 
   // ====== LOADERS ======
@@ -75,37 +143,30 @@ class _SuperAdminCreateFromRegistryPageState
     }
   }
 
-  Future<void> _loadMajorsAndAdvisorsForFaculty(Faculty faculty) async {
+  Future<void> _loadMajorsForFaculty(Faculty faculty) async {
     setState(() {
       _loadingMajors = true;
-      _loadingAdvisors = true;
       _majors = [];
-      _advisors = [];
       _selectedMajor = null;
+      _advisors = [];
       _selectedAdvisor = null;
     });
 
     try {
       final majors = await FacultyService.getMajorsForFaculty(faculty.id);
-      final advisors = await ProfessorService.getAdvisors(
-        facultyId: faculty.id,
-      );
-
       if (!mounted) return;
       setState(() {
         _majors = majors;
-        _advisors = advisors;
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load majors/advisors: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to load majors: $e')));
     } finally {
       if (mounted) {
         setState(() {
           _loadingMajors = false;
-          _loadingAdvisors = false;
         });
       }
     }
@@ -151,22 +212,22 @@ class _SuperAdminCreateFromRegistryPageState
       return;
     }
 
-    // choose advisor with smallest adviseesCount (simple balancing)
-    _advisors.sort((a, b) => a.adviseesCount.compareTo(b.adviseesCount));
+    _advisors.shuffle();
     setState(() {
       _selectedAdvisor = _advisors.first;
     });
   }
 
-  @override
-  void dispose() {
-    _nationalIdCtrl.dispose();
-    super.dispose();
-  }
-
-  // ====== CIVIL REGISTRY FETCH ======
+  // ====== CIVIL REGISTRY ======
 
   Future<void> _fetchPerson() async {
+    if (_nationalIdCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a national ID first.')),
+      );
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _loadedPerson = null;
@@ -191,9 +252,9 @@ class _SuperAdminCreateFromRegistryPageState
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to fetch record: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to fetch from civil registry: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -221,12 +282,14 @@ class _SuperAdminCreateFromRegistryPageState
       ).showSnackBar(const SnackBar(content: Text('Select a faculty.')));
       return;
     }
+
     if (_selectedMajor == null) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Select a major.')));
       return;
     }
+
     if (_selectedAdvisor == null) {
       ScaffoldMessenger.of(
         context,
@@ -234,11 +297,10 @@ class _SuperAdminCreateFromRegistryPageState
       return;
     }
 
-    final current = FirebaseAuth.instance.currentUser;
-    final createdByUid = current?.uid;
+    final createdByUid = FirebaseAuth.instance.currentUser?.uid;
     if (createdByUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No logged in super admin.')),
+        const SnackBar(content: Text('No logged-in admin found.')),
       );
       return;
     }
@@ -289,292 +351,91 @@ class _SuperAdminCreateFromRegistryPageState
     }
   }
 
-  // ====== UI ======
+  // ====== UI BUILDERS ======
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Create User from Civil Registry')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            // Left side: form
-            Expanded(
-              flex: 2,
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  children: [
-                    Text(
-                      'Step 1: Search civil record',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: _nationalIdCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'National ID (civil registry)',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Required';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _fetchPerson,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.search),
-                      label: const Text('Fetch from civil registry'),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Step 2: UniGO account details',
-                      style: theme.textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      initialValue: _role, // fixes the deprecation warning
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'student',
-                          child: Text('Student'),
-                        ),
-                        DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                        DropdownMenuItem(
-                          value: 'superAdmin',
-                          child: Text('Super Admin'),
-                        ),
-                      ],
-                      onChanged: (val) {
-                        if (val == null) return;
-                        setState(() {
-                          _role = val;
-                        });
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Role',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 12),
-                    // Faculty
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: _selectedFaculty?.id,
-                      decoration: const InputDecoration(
-                        labelText: 'Faculty',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _faculties
-                          .map(
-                            (f) => DropdownMenuItem<String>(
-                              value: f.id,
-                              child: Text(f.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: _loadingFaculties
-                          ? null
-                          : (val) {
-                              if (val == null) return;
-                              final faculty = _faculties.firstWhere(
-                                (f) => f.id == val,
-                              );
-                              setState(() {
-                                _selectedFaculty = faculty;
-                              });
-                              _loadMajorsAndAdvisorsForFaculty(faculty);
-                            },
-                    ),
-                    const SizedBox(height: 12),
-                    // Major
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      value: _selectedMajor?.id,
-                      decoration: const InputDecoration(
-                        labelText: 'Major',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: _majors
-                          .map(
-                            (m) => DropdownMenuItem<String>(
-                              value: m.id,
-                              child: Text(m.name),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (_loadingMajors || _selectedFaculty == null)
-                          ? null
-                          : (val) {
-                              if (val == null) return;
-                              final major = _majors.firstWhere(
-                                (m) => m.id == val,
-                              );
-                              setState(() {
-                                _selectedMajor = major;
-                              });
-                              _loadAdvisorsForMajor(major);
-                            },
-                    ),
-                    const SizedBox(height: 12),
-                    // Advisor + random button
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            value: _selectedAdvisor?.id,
-                            decoration: const InputDecoration(
-                              labelText: 'Advisor',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: _advisors
-                                .map(
-                                  (p) => DropdownMenuItem<String>(
-                                    value: p.id,
-                                    child: Text(p.fullName),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (_loadingAdvisors || _advisors.isEmpty)
-                                ? null
-                                : (val) {
-                                    if (val == null) return;
-                                    final prof = _advisors.firstWhere(
-                                      (p) => p.id == val,
-                                    );
-                                    setState(() {
-                                      _selectedAdvisor = prof;
-                                    });
-                                  },
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          tooltip: 'Pick random advisor',
-                          onPressed: _loadingAdvisors || _advisors.isEmpty
-                              ? null
-                              : _pickRandomAdvisor,
-                          icon: const Icon(Icons.casino_outlined),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    ElevatedButton.icon(
-                      onPressed: _isCreating ? null : _createUser,
-                      icon: _isCreating
-                          ? const SizedBox(
-                              height: 18,
-                              width: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.person_add_alt_1),
-                      label: const Text('Create UniGO user'),
-                    ),
-                    if (_creationResult != null) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        _creationResult!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: Colors.green[700],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
+      appBar: AppBar(title: const Text('Create From Civil Registry')),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildNationalIdCard(),
+                const SizedBox(height: 16),
+                if (_loadedPerson != null) _buildCivilInfoCard(),
+                const SizedBox(height: 16),
+                _buildAcademicSection(),
+                const SizedBox(height: 24),
+                _buildCreateButton(),
+                if (_creationResult != null) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Result',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    _creationResult!,
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(width: 16),
-            // Right side: preview
-            Expanded(
-              flex: 3,
-              child: _loadedPerson == null
-                  ? Center(
-                      child: Text(
-                        'No civil record loaded yet.\nSearch by National ID to preview.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    )
-                  : Card(
-                      elevation: 2,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Civil Record Preview',
-                              style: theme.textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 12),
+          ),
+        ),
+      ),
+    );
+  }
 
-                            // ===== BASIC IDENTIFIERS =====
-                            _infoRow('Full name', _loadedPerson!.fullName),
-                            _infoRow('National ID', _loadedPerson!.nationalId),
-                            _infoRow('DOB', _loadedPerson!.dob ?? '-'),
-
-                            // ===== ADDRESS / LOCATION =====
-                            _infoRow(
-                              'Location',
-                              _loadedPerson!.location ?? '-',
-                            ),
-                            _infoRow(
-                              'Birth place',
-                              _loadedPerson!.placeOfBirth ?? '-',
-                            ),
-                            _infoRow(
-                              'House address',
-                              _loadedPerson!.houseAddress ?? '-',
-                            ),
-
-                            // ===== PAYMENT / PHONES =====
-                            _infoRow(
-                              'Payment number',
-                              _loadedPerson!.paynum ?? '-',
-                            ),
-                            _infoRow(
-                              'Phones',
-                              _loadedPerson!.identifiers.isNotEmpty
-                                  ? _loadedPerson!.identifiers.join(', ')
-                                  : (_loadedPerson!.primaryPhone ?? '-'),
-                            ),
-
-                            // ===== FAMILY =====
-                            _infoRow(
-                              'Mother name',
-                              _loadedPerson!.motherName ?? '-',
-                            ),
-                            _infoRow(
-                              'Father name',
-                              _loadedPerson!.fatherName ?? '-',
-                            ),
-
-                            const Divider(),
-
-                            // ===== LINK STATUS =====
-                            _infoRow(
-                              'Linked uid',
-                              _loadedPerson!.linkedUid ?? 'None',
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+  Widget _buildNationalIdCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Civil Registry',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _nationalIdCtrl,
+              decoration: const InputDecoration(
+                labelText: 'National ID',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (val) {
+                final trimmed = val?.trim() ?? '';
+                if (trimmed.isEmpty) {
+                  return 'National ID is required';
+                }
+                if (trimmed.length < 5) {
+                  return 'Enter a valid national ID';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: _isLoading ? null : _fetchPerson,
+                icon: _isLoading
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search),
+                label: const Text('Fetch from registry'),
+              ),
             ),
           ],
         ),
@@ -582,10 +443,211 @@ class _SuperAdminCreateFromRegistryPageState
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _buildCivilInfoCard() {
+    final person = _loadedPerson!;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Civil Record',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            _buildInfoRow('Full name', person.fullName),
+            _buildInfoRow('National ID', person.nationalId),
+            if (person.dob != null) _buildInfoRow('Date of birth', person.dob!),
+            if (person.location != null)
+              _buildInfoRow('Location', person.location!),
+            if (person.houseAddress != null)
+              _buildInfoRow('Address', person.houseAddress!),
+            if (person.primaryPhone != null)
+              _buildInfoRow('Phone', person.primaryPhone!),
+            if (person.motherName != null)
+              _buildInfoRow('Mother', person.motherName!),
+            if (person.fatherName != null)
+              _buildInfoRow('Father', person.fatherName!),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAcademicSection() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Academic assignment',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(height: 12),
+            // Role selector
+            DropdownButtonFormField<String>(
+              initialValue: _role,
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'student', child: Text('Student')),
+                DropdownMenuItem(
+                  value: 'admin',
+                  child: Text('Admin (faculty staff)'),
+                ),
+              ],
+              onChanged: (val) {
+                if (val == null) return;
+                setState(() {
+                  _role = val;
+                });
+              },
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              isExpanded: true, // 👈 important
+              initialValue: _selectedFaculty?.id,
+              decoration: const InputDecoration(
+                labelText: 'Faculty',
+                border: OutlineInputBorder(),
+              ),
+              items: _faculties
+                  .map(
+                    (f) => DropdownMenuItem<String>(
+                      value: f.id,
+                      child: Text(
+                        f.name,
+                        overflow: TextOverflow.ellipsis, // 👈 avoid overflow
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (_loadingFaculties || _currentFacultyId != null)
+                  ? null
+                  : (val) {
+                      if (val == null) return;
+                      final faculty = _faculties.firstWhere((f) => f.id == val);
+                      setState(() {
+                        _selectedFaculty = faculty;
+                      });
+                      _loadMajorsForFaculty(faculty);
+                    },
+            ),
+            if (_loadingFaculties)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            const SizedBox(height: 12),
+            // Majors
+            // ===== Major =====
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              initialValue: _selectedMajor?.id,
+              decoration: const InputDecoration(
+                labelText: 'Major',
+                border: OutlineInputBorder(),
+              ),
+              items: _majors
+                  .map(
+                    (m) => DropdownMenuItem<String>(
+                      value: m.id,
+                      child: Text(m.name, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _loadingMajors
+                  ? null
+                  : (val) {
+                      if (val == null) return;
+                      final major = _majors.firstWhere((m) => m.id == val);
+                      setState(() {
+                        _selectedMajor = major;
+                      });
+                      _loadAdvisorsForMajor(major);
+                    },
+            ),
+            if (_loadingMajors)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            const SizedBox(height: 12),
+            // ===== Advisor =====
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              initialValue: _selectedAdvisor?.id,
+              decoration: const InputDecoration(
+                labelText: 'Advisor',
+                border: OutlineInputBorder(),
+              ),
+              items: _advisors
+                  .map(
+                    (p) => DropdownMenuItem<String>(
+                      value: p.id,
+                      child: Text(p.fullName, overflow: TextOverflow.ellipsis),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _loadingAdvisors
+                  ? null
+                  : (val) {
+                      if (val == null) return;
+                      final prof = _advisors.firstWhere((p) => p.id == val);
+                      setState(() {
+                        _selectedAdvisor = prof;
+                      });
+                    },
+            ),
+            if (_loadingAdvisors)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _advisors.isEmpty || _loadingAdvisors
+                    ? null
+                    : _pickRandomAdvisor,
+                icon: const Icon(Icons.shuffle),
+                label: const Text('Pick random advisor'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreateButton() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: ElevatedButton.icon(
+        onPressed: _isCreating ? null : _createUser,
+        icon: _isCreating
+            ? const SizedBox(
+                height: 16,
+                width: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.person_add),
+        label: const Text('Create user'),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 150,
@@ -594,7 +656,9 @@ class _SuperAdminCreateFromRegistryPageState
               style: const TextStyle(fontWeight: FontWeight.w600),
             ),
           ),
-          Expanded(child: Text(value)),
+          Expanded(
+            child: Text(value, maxLines: 3, overflow: TextOverflow.ellipsis),
+          ),
         ],
       ),
     );

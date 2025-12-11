@@ -1,116 +1,171 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/role_service.dart';
+import 'super_admin_add_course_page.dart';
 
 /// Super admin – manage courses & their availability next semester.
-class SuperAdminCoursesPage extends StatelessWidget {
+/// Scoped by facultyId.
+class SuperAdminCoursesPage extends StatefulWidget {
   const SuperAdminCoursesPage({super.key});
 
+  @override
+  State<SuperAdminCoursesPage> createState() => _SuperAdminCoursesPageState();
+}
+
+class _SuperAdminCoursesPageState extends State<SuperAdminCoursesPage> {
+  final _db = FirebaseFirestore.instance;
+  final RoleService _roleService = RoleService();
+
+  String? _facultyId;
+  bool _loadingFaculty = true;
+  String? _facultyError;
+
   CollectionReference<Map<String, dynamic>> get _coursesCol =>
-      FirebaseFirestore.instance.collection('courses');
+      _db.collection('courses');
 
-  Future<void> _showCreateCourseDialog(BuildContext context) async {
-    final codeCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    final creditsCtrl = TextEditingController(text: '3');
-    final typeCtrl = TextEditingController();
+  @override
+  void initState() {
+    super.initState();
+    _loadFacultyScope();
+  }
 
-    bool? ok = await showDialog<bool>(
+  Future<void> _loadFacultyScope() async {
+    try {
+      final id = await _roleService.getCurrentFacultyId();
+      if (!mounted) return;
+      setState(() {
+        _facultyId = id;
+        _loadingFaculty = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _facultyError = e.toString();
+        _loadingFaculty = false;
+      });
+    }
+  }
+
+  Future<void> _toggleAvailableNextSemester(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    bool value,
+  ) async {
+    try {
+      await _coursesCol
+          .doc(doc.id)
+          .set({'availableNextSemester': value}, SetOptions(merge: true));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error updating availability: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _confirmDeleteCourse(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    String code,
+    String name,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
       context: context,
-      builder: (ctx) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text('Create new course'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: codeCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Course code',
-                    hintText: 'e.g. 1901101',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Course name',
-                    hintText: 'e.g. Discrete Mathematics',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: creditsCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: false,
-                  ),
-                  decoration: const InputDecoration(
-                    labelText: 'Credits',
-                    hintText: 'e.g. 3',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: typeCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Type',
-                    hintText: 'e.g. Elective Speciality Courses',
-                  ),
-                ),
-              ],
-            ),
+          title: const Text('Delete course'),
+          content: Text(
+            'Are you sure you want to delete this course?\n\n'
+            '$code – $name\n\n'
+            'This will remove the course document (and its sections array). '
+            'Any other references using this course code will NOT be auto-cleaned.',
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
+              onPressed: () => Navigator.of(context).pop(false),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
             ),
           ],
         );
       },
     );
 
-    if (ok != true) return;
+    if (shouldDelete != true) return;
 
-    final code = codeCtrl.text.trim();
-    final name = nameCtrl.text.trim();
-    final credits = int.tryParse(creditsCtrl.text.trim());
-    final type = typeCtrl.text.trim();
+    try {
+      await _coursesCol.doc(doc.id).delete();
 
-    if (code.isEmpty || name.isEmpty || credits == null) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please fill code, name and valid credits'),
+        SnackBar(
+          content: Text('Course $code deleted'),
         ),
       );
-      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error deleting course: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-
-    // Write course doc: courses/{code}
-    await _coursesCol.doc(code).set({
-      'code': code,
-      'name': name,
-      'credits': credits,
-      'type': type,
-      'availableNextSemester': true, // default ON
-      // you can later add sections, pre_Requisite, department, etc.
-    }, SetOptions(merge: true));
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingFaculty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Courses & sections')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_facultyError != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Courses & sections')),
+        body: Center(
+          child: Text(
+            'Error loading faculty scope:\n$_facultyError',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    }
+
+    if (_facultyId == null || _facultyId!.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Courses & sections')),
+        body: const Center(
+          child: Text(
+            'No faculty assigned to this account.\n'
+            'Please set facultyId in roles/{uid}.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Colors.black54),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('Courses & sections')),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _coursesCol.orderBy('code').snapshots(),
+        stream: _coursesCol
+            .where('facultyId', isEqualTo: _facultyId)
+            .orderBy('code')
+            .snapshots(),
         builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+          if (snap.connectionState == ConnectionState.waiting &&
+              !snap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
@@ -127,8 +182,9 @@ class SuperAdminCoursesPage extends StatelessWidget {
           if (docs.isEmpty) {
             return const Center(
               child: Text(
-                'No courses found.\nUse the + button to create a course.',
+                'No courses found for this faculty.\nUse the + button to add one.',
                 textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: Colors.black54),
               ),
             );
           }
@@ -141,50 +197,105 @@ class SuperAdminCoursesPage extends StatelessWidget {
               final doc = docs[index];
               final data = doc.data();
 
-              final code = data['code']?.toString() ?? doc.id;
-              final name = (data['name'] ?? 'Untitled course') as String;
+              final code = (data['code'] ?? doc.id).toString();
+              final name = (data['name'] ?? 'Untitled course').toString();
               final credits = data['credits'];
-              final type = (data['type'] ?? '') as String;
+              final type = (data['type'] ?? 'Unknown type').toString();
+              final bool available =
+                  (data['availableNextSemester'] ?? false) as bool;
 
-              // 👇 our flag – default false if missing
-              final bool availableNextSemester =
-                  (data['availableNextSemester'] ?? false) == true;
-
-              return Material(
-                color: Colors.white,
-                elevation: 1,
-                borderRadius: BorderRadius.circular(12),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  title: Text(
-                    '$code – $name',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  subtitle: Text(
-                    [
-                      if (credits != null) 'Credits: $credits',
-                      if (type.isNotEmpty) type,
-                    ].join(' • '),
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                  // TODO: you can add onTap later to open a full "edit course" page.
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
+              return Card(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Next sem', style: TextStyle(fontSize: 11)),
-                      const SizedBox(width: 4),
-                      Switch(
-                        value: availableNextSemester,
-                        onChanged: (value) async {
-                          await doc.reference.update({
-                            'availableNextSemester': value,
-                          });
-                        },
+                      // top row: code + name + next-sem + delete
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$code – $name',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'Next sem',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Switch(
+                                    value: available,
+                                    onChanged: (val) =>
+                                        _toggleAvailableNextSemester(
+                                            doc, val),
+                                  ),
+                                  IconButton(
+                                    tooltip: 'Delete course',
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 20,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () => _confirmDeleteCourse(
+                                      doc,
+                                      code,
+                                      name,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      // second row: type + credits
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            type,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Colors.black54,
+                            ),
+                          ),
+                          if (credits != null)
+                            Text(
+                              'Credits: $credits',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(
+                          'Faculty: $_facultyId',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.black38,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -195,7 +306,13 @@ class SuperAdminCoursesPage extends StatelessWidget {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showCreateCourseDialog(context),
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const SuperAdminAddCoursePage(),
+            ),
+          );
+        },
         child: const Icon(Icons.add),
       ),
     );
