@@ -24,6 +24,7 @@ import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
 
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
@@ -213,7 +214,7 @@ class _MainScaffoldState extends State<MainScaffold> {
           Text(
             label,
             style: TextStyle(
-              fontFamily: "AnekTelugu",
+              fontFamily: "IBMPlexSans",
               fontSize: 12,
               fontWeight: FontWeight.w600,
               color: isActive ? Colors.black : Colors.black54,

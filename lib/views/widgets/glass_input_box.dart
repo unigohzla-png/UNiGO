@@ -21,7 +21,7 @@ class GlassInputBox extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              fontFamily: "AnekTelugu",
+              fontFamily: "IBMPlexSans",
               fontSize: 14,
               color: Colors.black87,
             ),

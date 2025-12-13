@@ -5,7 +5,7 @@ import '../../models/user_role.dart';
 import 'admin_courses_page.dart';
 import 'admin_calendar_manage_page.dart';
 import 'super_admin_registration_page.dart';
-import 'super_admin_student_window_page.dart'; // still exists if you need it internally
+// still exists if you need it internally
 import 'super_admin_courses_page.dart';
 import 'super_admin_roles_page.dart';
 import 'super_admin_students_page.dart';

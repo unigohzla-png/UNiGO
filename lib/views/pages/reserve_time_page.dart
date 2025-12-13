@@ -32,7 +32,7 @@ class ReserveTimePage extends StatelessWidget {
                         const Text(
                           'New Reservation',
                           style: TextStyle(
-                            fontFamily: 'AnekTelugu',
+                            fontFamily: 'IBMPlexSans',
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
                             color: Colors.black87,
@@ -182,7 +182,7 @@ class ReserveTimePage extends StatelessWidget {
                         const Text(
                           'Reserved Times',
                           style: TextStyle(
-                            fontFamily: 'AnekTelugu',
+                            fontFamily: 'IBMPlexSans',
                             fontSize: 18,
                             fontWeight: FontWeight.w700,
                             color: Colors.black87,

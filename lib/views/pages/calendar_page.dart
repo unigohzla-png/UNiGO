@@ -45,7 +45,7 @@ class _CalendarScaffold extends StatelessWidget {
         title: const Text(
           "Calendar",
           style: TextStyle(
-            fontFamily: "AnekTelugu",
+            fontFamily: "IBMPlexSans",
             fontSize: 26,
             fontWeight: FontWeight.w800,
             color: Colors.black,
@@ -73,7 +73,7 @@ class _CalendarScaffold extends StatelessWidget {
                             Text(
                               leftDayName,
                               style: const TextStyle(
-                                fontFamily: "AnekTelugu",
+                                fontFamily: "IBMPlexSans",
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.black87,
@@ -83,7 +83,7 @@ class _CalendarScaffold extends StatelessWidget {
                             Text(
                               "${today.day}", // 👈 always today's date
                               style: const TextStyle(
-                                fontFamily: "AnekTelugu",
+                                fontFamily: "IBMPlexSans",
                                 fontSize: 38,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.black,
@@ -93,7 +93,7 @@ class _CalendarScaffold extends StatelessWidget {
                             Text(
                               leftMonthName,
                               style: const TextStyle(
-                                fontFamily: "AnekTelugu",
+                                fontFamily: "IBMPlexSans",
                                 fontSize: 18,
                                 fontWeight: FontWeight.w600,
                                 color: Colors.black87,
@@ -181,7 +181,7 @@ class _CalendarScaffold extends StatelessWidget {
                                         Text(
                                           "$day",
                                           style: TextStyle(
-                                            fontFamily: "AnekTelugu",
+                                            fontFamily: "IBMPlexSans",
                                             fontSize: 15,
                                             fontWeight: isSelected
                                                 ? FontWeight.w800
@@ -237,7 +237,7 @@ class _CalendarScaffold extends StatelessWidget {
                                 Text(
                                   "${CalendarController.months[controller.currentMonth.month - 1]} ${controller.currentMonth.year}",
                                   style: const TextStyle(
-                                    fontFamily: "AnekTelugu",
+                                    fontFamily: "IBMPlexSans",
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
                                     color: Colors.black87,
@@ -383,7 +383,7 @@ List<Widget> _buildEventCards(CalendarController controller) {
         child: Text(
           "No events to show.",
           style: TextStyle(
-            fontFamily: "AnekTelugu",
+            fontFamily: "IBMPlexSans",
             fontSize: 13,
             color: Colors.black54,
           ),
@@ -424,7 +424,7 @@ List<Widget> _buildEventCards(CalendarController controller) {
                         Text(
                           e.title,
                           style: const TextStyle(
-                            fontFamily: "AnekTelugu",
+                            fontFamily: "IBMPlexSans",
                             fontSize: 14,
                             fontWeight: FontWeight.w700,
                             color: Colors.black87,
@@ -435,7 +435,7 @@ List<Widget> _buildEventCards(CalendarController controller) {
                           "${CalendarController.months[e.date.month - 1]} "
                           "${e.date.day}, ${e.date.year} • ${e.type}",
                           style: TextStyle(
-                            fontFamily: "AnekTelugu",
+                            fontFamily: "IBMPlexSans",
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             color: color,
@@ -469,7 +469,7 @@ List<Widget> _buildReminderCards(CalendarController controller) {
         child: Text(
           "No reminders yet.",
           style: TextStyle(
-            fontFamily: "AnekTelugu",
+            fontFamily: "IBMPlexSans",
             fontSize: 13,
             color: Colors.black54,
           ),
@@ -499,7 +499,7 @@ List<Widget> _buildReminderCards(CalendarController controller) {
                           "• ${e.title} — "
                           "${CalendarController.months[e.date.month - 1]} ${e.date.day}",
                           style: const TextStyle(
-                            fontFamily: "AnekTelugu",
+                            fontFamily: "IBMPlexSans",
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: Colors.black87,
@@ -561,7 +561,7 @@ void _showAddReminderDialog(CalendarController controller) {
             backgroundColor: Colors.white.withOpacity(0.85),
             title: const Text(
               "Add Reminder",
-              style: TextStyle(fontFamily: "AnekTelugu"),
+              style: TextStyle(fontFamily: "IBMPlexSans"),
             ),
             content: Column(
               mainAxisSize: MainAxisSize.min,
@@ -637,7 +637,7 @@ Widget _bigTab(String tab, CalendarController controller) {
         child: Text(
           tab,
           style: TextStyle(
-            fontFamily: "AnekTelugu",
+            fontFamily: "IBMPlexSans",
             fontSize: 14.5,
             fontWeight: FontWeight.w800,
             color: isActive ? Colors.black : Colors.black54,
@@ -685,7 +685,7 @@ Widget _filterListItem(
           Text(
             label,
             style: TextStyle(
-              fontFamily: "AnekTelugu",
+              fontFamily: "IBMPlexSans",
               fontSize: 13,
               fontWeight: FontWeight.w700,
               color: isActive ? Colors.black : Colors.black87,
@@ -759,7 +759,7 @@ class _WD extends StatelessWidget {
       child: Text(
         t,
         style: const TextStyle(
-          fontFamily: "AnekTelugu",
+          fontFamily: "IBMPlexSans",
           fontSize: 12,
           fontWeight: FontWeight.w700,
           color: Colors.black54,

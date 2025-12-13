@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../services/reminder_notifications_service.dart';
 
 class CalendarController extends ChangeNotifier {
   final _db = FirebaseFirestore.instance;
@@ -341,6 +342,12 @@ class CalendarController extends ChangeNotifier {
       notifyListeners();
 
       debugPrint('[Calendar] reminder created with id ${ref.id}');
+      // Schedule notifications: 1 day before @ 7AM + same day @ 7AM
+      await ReminderNotificationsService.scheduleForReminder(
+        reminderId: ref.id,
+        title: title,
+        reminderDate: normalized,
+      );
     } catch (e, st) {
       debugPrint('[Calendar] addReminder error: $e');
       debugPrint('$st');
@@ -374,6 +381,8 @@ class CalendarController extends ChangeNotifier {
       events = events.where((e) => e.id != event.id).toList();
       notifyListeners();
       debugPrint('[Calendar] reminder ${event.id} deleted');
+      // Cancel scheduled notifications for this reminder
+      await ReminderNotificationsService.cancelForReminder(event.id);
     } catch (e, st) {
       debugPrint('[Calendar] deleteReminder error: $e');
       debugPrint('$st');
