@@ -3,13 +3,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/user_role.dart';
-import '../../services/role_service.dart';
 import 'admin_course_content_page.dart';
 
 class AdminCoursesPage extends StatefulWidget {
   final UserRole role;
 
-  const AdminCoursesPage({super.key, required this.role});
+  const AdminCoursesPage({
+    super.key,
+    required this.role,
+  });
 
   @override
   State<AdminCoursesPage> createState() => _AdminCoursesPageState();
@@ -18,10 +20,11 @@ class AdminCoursesPage extends StatefulWidget {
 class _AdminCoursesPageState extends State<AdminCoursesPage> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-  final RoleService _roleService = RoleService();
 
   String? _instructorName;
   String? _facultyId;
+  List<String> _assignedCourseCodes = [];
+
   bool _loadingUser = true;
 
   bool get isSuper => widget.role == UserRole.superAdmin;
@@ -29,77 +32,90 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
   @override
   void initState() {
     super.initState();
-    _initUserContext();
+    _loadInstructorInfo();
   }
 
-  /// Loads:
-  /// - instructorName from users/{uid}
-  /// - facultyId from roles/{uid}
-  Future<void> _initUserContext() async {
+  Future<void> _loadInstructorInfo() async {
     try {
       final uid = _auth.currentUser?.uid;
-
-      String? instructorName;
-      if (uid != null) {
-        final doc = await _db.collection('users').doc(uid).get();
-        final data = doc.data() ?? {};
-
-        instructorName =
-            (data['name'] ?? data['fullName'] ?? data['instructorName'])
-                ?.toString();
+      if (uid == null) {
+        if (!mounted) return;
+        setState(() {
+          _loadingUser = false;
+        });
+        return;
       }
 
-      final facultyId = await _roleService.getCurrentFacultyId();
+      // 1) Load user basic info (name + facultyId)
+      final userDoc = await _db.collection('users').doc(uid).get();
+      final userData = userDoc.data() ?? {};
+
+      final name = (userData['name'] ??
+              userData['fullName'] ??
+              userData['instructorName'])
+          ?.toString();
+
+      final facultyId = userData['facultyId']?.toString();
+
+      List<String> assignedCodes = [];
+
+      // 2) For normal admins (professors), load assignedCourseCodes
+      if (!isSuper && facultyId != null && facultyId.trim().isNotEmpty) {
+        final profSnap = await _db
+            .collection('faculties')
+            .doc(facultyId.trim())
+            .collection('professors')
+            .doc(uid)
+            .get();
+
+        final profData = profSnap.data();
+        if (profData != null) {
+          final raw = profData['assignedCourseCodes'];
+          if (raw is List) {
+            assignedCodes = raw.map((e) => e.toString()).toList();
+          }
+        }
+      }
 
       if (!mounted) return;
       setState(() {
-        _instructorName = instructorName;
-        _facultyId = facultyId;
+        _instructorName = name;
+        _facultyId = facultyId?.trim();
+        _assignedCourseCodes = assignedCodes;
         _loadingUser = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loadingUser = false;
-      });
+      _loadingUser = false;
+      setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loadingUser) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-
-    if (_facultyId == null || _facultyId!.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text(isSuper ? 'All Courses' : 'My Courses')),
-        body: const Center(
-          child: Text(
-            'No faculty assigned to this account.\n'
-            'Please set facultyId in roles/{uid} & users/{uid}.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13, color: Colors.black54),
-          ),
+        appBar: AppBar(
+          title: Text(isSuper ? 'All Courses' : 'My Courses'),
         ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
-    // Base query = all courses in THIS faculty
-    Query<Map<String, dynamic>> query = _db
-        .collection('courses')
-        .where('facultyId', isEqualTo: _facultyId)
-        .orderBy('code');
+    // Base query = courses for this faculty (if we know it)
+    Query<Map<String, dynamic>> query = _db.collection('courses');
 
-    // Normal admin → filter further by instructorName
-    if (!isSuper &&
-        _instructorName != null &&
-        _instructorName!.trim().isNotEmpty) {
-      query = query.where('instructorName', isEqualTo: _instructorName);
+    if (_facultyId != null && _facultyId!.isNotEmpty) {
+      query = query.where('facultyId', isEqualTo: _facultyId);
     }
 
+    // Always order by code (index already created for facultyId+code)
+    query = query.orderBy('code');
+
     return Scaffold(
-      appBar: AppBar(title: Text(isSuper ? 'All Courses' : 'My Courses')),
+      appBar: AppBar(
+        title: Text(isSuper ? 'All Courses' : 'My Courses'),
+      ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: query.snapshots(),
         builder: (context, snap) {
@@ -117,19 +133,37 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
             );
           }
 
-          final docs = snap.data?.docs ?? [];
+          var docs = snap.data?.docs ?? [];
+
+          if (!isSuper) {
+            // Normal admin: only see assigned courses
+            if (_assignedCourseCodes.isEmpty) {
+              return Center(
+                child: Text(
+                  _instructorName == null
+                      ? 'No courses assigned to this account yet.\nPlease contact your super admin.'
+                      : 'No courses assigned to $_instructorName.\nPlease contact your super admin.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 14),
+                ),
+              );
+            }
+
+            docs = docs.where((doc) {
+              final data = doc.data();
+              final code = data['code']?.toString() ?? doc.id;
+              return _assignedCourseCodes.contains(code);
+            }).toList();
+          }
 
           if (docs.isEmpty) {
             return Center(
               child: Text(
                 isSuper
                     ? 'No courses found for this faculty.'
-                    : (_instructorName == null ||
-                          _instructorName!.trim().isEmpty)
-                    ? 'No courses assigned to this instructor.'
-                    : 'No courses assigned to $_instructorName.',
+                    : 'No assigned courses found in this faculty.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 13, color: Colors.black54),
+                style: const TextStyle(fontSize: 14),
               ),
             );
           }
@@ -142,9 +176,11 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
               final doc = docs[index];
               final data = doc.data();
               final code = data['code']?.toString() ?? doc.id;
-              final name = (data['name'] ?? 'Untitled course').toString();
+              final name =
+                  (data['name'] ?? 'Untitled course').toString();
               final credits = data['credits'];
-              final instructor = data['instructorName']?.toString() ?? '';
+              final instructor =
+                  data['instructorName']?.toString() ?? '';
 
               return Material(
                 color: Colors.white,
@@ -164,7 +200,8 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                   subtitle: Text(
                     [
                       if (credits != null) 'Credits: $credits',
-                      if (instructor.isNotEmpty) 'Instructor: $instructor',
+                      if (instructor.isNotEmpty)
+                        'Instructor: $instructor',
                     ].join(' • '),
                     style: const TextStyle(fontSize: 12),
                   ),
@@ -173,9 +210,9 @@ class _AdminCoursesPageState extends State<AdminCoursesPage> {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => AdminCourseContentPage(
+                          role: widget.role,
                           courseCode: code,
                           courseName: name,
-                          role: widget.role,
                         ),
                       ),
                     );

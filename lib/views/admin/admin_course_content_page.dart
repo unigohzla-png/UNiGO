@@ -30,6 +30,15 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+
+    // 👇 ADD THIS LISTENER
+    _tabController.addListener(() {
+      // Rebuild when the tab index changes so the FAB updates
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
     _courseRef = FirebaseFirestore.instance
         .collection('courses')
         .doc(widget.courseCode);

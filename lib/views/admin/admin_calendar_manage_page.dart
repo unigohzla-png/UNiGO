@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/user_role.dart';
-import '../../services/role_service.dart'; // 👈 add this
+import '../../services/role_service.dart';
 
 class AdminCalendarManagePage extends StatefulWidget {
   final UserRole role;
@@ -18,599 +18,553 @@ class AdminCalendarManagePage extends StatefulWidget {
 class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
   final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
-  final RoleService _roleService = RoleService(); // 👈 new
-
-  String? _facultyId; // 👈 new
-  bool _loadingCourses = true;
-  bool _loadingHeader = true;
-  String? _headerError;
-
-  String? _instructorName; // for admins
-  final List<_CourseOption> _courses = [];
-
-  // form fields
-  String _type = 'Deadline'; // Admin: fixed; Super: Deadline/Event
-  String _scope = 'course'; // 'course' or 'global' (super only)
-  _CourseOption? _selectedCourse;
-  DateTime _selectedDate = DateTime.now();
-  final TextEditingController _titleCtrl = TextEditingController();
+  final _roleService = RoleService();
 
   bool get _isSuper => widget.role == UserRole.superAdmin;
+
+  // Faculty + courses scope
+  String? _facultyId;
+  String? _scopeError;
+  bool _loadingScope = true;
+
+  List<_CourseItem> _courses = []; // all faculty courses (super) or assigned
+  List<String> _adminCourseCodes = []; // codes assigned to this admin
+
+  // Form state
+  final TextEditingController _titleController = TextEditingController();
+  DateTime _selectedDate = DateTime.now();
+  String _selectedType = 'Deadline'; // 'Deadline' or 'Event'
+  String _selectedScope = 'course'; // 'course' or 'global'
+  String? _selectedCourseCode;
 
   @override
   void initState() {
     super.initState();
-    _initHeaderAndCourses();
+    _loadScopeAndCourses();
   }
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
+    _titleController.dispose();
     super.dispose();
   }
 
-  Future<void> _initHeaderAndCourses() async {
+  Future<void> _loadScopeAndCourses() async {
     setState(() {
-      _loadingCourses = true;
-      _loadingHeader = true;
-      _headerError = null;
+      _loadingScope = true;
+      _scopeError = null;
     });
 
     try {
       final uid = _auth.currentUser?.uid;
       if (uid == null) {
-        throw Exception('Not logged in');
+        setState(() {
+          _scopeError = 'No logged-in user.';
+          _loadingScope = false;
+        });
+        return;
       }
 
-      // ===== facultyId for this admin / super admin =====
-      final facId = await _roleService.getCurrentFacultyId();
-      if (facId == null || facId.trim().isEmpty) {
-        throw Exception(
-          'No faculty assigned to this account. Please set facultyId in roles/{uid}.',
-        );
+      // 1) Get facultyId of current user/super admin
+      final facultyId = await _roleService.getCurrentFacultyId();
+      if (facultyId == null || facultyId.trim().isEmpty) {
+        setState(() {
+          _scopeError = 'No faculty assigned to this account.';
+          _loadingScope = false;
+        });
+        return;
       }
-      _facultyId = facId.trim();
+      final trimmedFacultyId = facultyId.trim();
 
-      // ----- load user doc to get instructorName (for normal admins) -----
-      final userSnap = await _db.collection('users').doc(uid).get();
-      final userData = userSnap.data() ?? {};
+      final List<_CourseItem> courses = [];
+      final List<String> adminCodes = [];
 
-      _instructorName =
-          (userData['instructorName'] ??
-                  userData['fullName'] ??
-                  userData['name'] ??
-                  '')
-              .toString();
+      if (_isSuper) {
+        // Super admin → all courses in this faculty
+        final snap = await _db
+            .collection('courses')
+            .where('facultyId', isEqualTo: trimmedFacultyId)
+            .orderBy('code')
+            .get();
 
-      _loadingHeader = false;
+        for (final doc in snap.docs) {
+          final data = doc.data();
+          final code = (data['code'] ?? doc.id).toString();
+          final name = (data['name'] ?? 'Untitled').toString();
+          courses.add(_CourseItem(code: code, name: name));
+        }
+      } else {
+        // Normal admin → only assignedCourseCodes from professors subcollection
+        final profSnap = await _db
+            .collection('faculties')
+            .doc(trimmedFacultyId)
+            .collection('professors')
+            .doc(uid)
+            .get();
 
-      // ----- load courses for THIS faculty -----
-      Query<Map<String, dynamic>> q = _db
-          .collection('courses')
-          .where('facultyId', isEqualTo: _facultyId);
+        final profData = profSnap.data();
+        List<String> assignedCodes = [];
+        if (profData != null && profData['assignedCourseCodes'] is List) {
+          assignedCodes = (profData['assignedCourseCodes'] as List)
+              .map((e) => e.toString())
+              .toList();
+        }
 
-      // normal admin → only their courses
-      if (!_isSuper &&
-          _instructorName != null &&
-          _instructorName!.trim().isNotEmpty) {
-        q = q.where('instructorName', isEqualTo: _instructorName);
-      }
+        if (assignedCodes.isNotEmpty) {
+          // For each course code, read course doc (only if belongs to same faculty)
+          for (final code in assignedCodes) {
+            final courseDoc = await _db.collection('courses').doc(code).get();
+            if (!courseDoc.exists) continue;
 
-      q = q.orderBy('code');
+            final data = courseDoc.data()!;
+            final cFacultyId = data['facultyId']?.toString();
+            if (cFacultyId != trimmedFacultyId) continue;
 
-      final snap = await q.get();
+            final name = (data['name'] ?? 'Untitled').toString();
+            courses.add(_CourseItem(code: code, name: name));
+          }
+        }
 
-      _courses.clear();
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        final code = data['code']?.toString() ?? doc.id;
-        final name = (data['name'] ?? 'Untitled course').toString();
-        _courses.add(_CourseOption(code: code, name: name));
-      }
-
-      if (_courses.isNotEmpty) {
-        _selectedCourse ??= _courses.first;
+        adminCodes.addAll(assignedCodes);
       }
 
       setState(() {
-        _loadingCourses = false;
+        _facultyId = trimmedFacultyId;
+        _courses = courses;
+        _adminCourseCodes = adminCodes;
+        _loadingScope = false;
       });
     } catch (e) {
       setState(() {
-        _headerError = e.toString();
-        _loadingCourses = false;
-        _loadingHeader = false;
+        _scopeError = e.toString();
+        _loadingScope = false;
       });
     }
   }
 
-  Future<void> _pickDate() async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 2),
-    );
-    if (picked != null) {
-      setState(() {
-        _selectedDate = picked;
-      });
+  // ========= STREAM OF EVENTS FOR THIS FACULTY =========
+
+  Stream<QuerySnapshot<Map<String, dynamic>>> _eventsStream() {
+    Query<Map<String, dynamic>> q = _db.collection('calendarEvents');
+
+    if (_facultyId != null && _facultyId!.isNotEmpty) {
+      q = q.where('facultyId', isEqualTo: _facultyId);
     }
+
+    return q.orderBy('date').snapshots();
   }
 
-  Future<void> _createItem() async {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please enter a title')));
-      return;
-    }
-
-    // No faculty → don't create cross-faculty items
-    if (_facultyId == null || _facultyId!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This account has no faculty assigned.')),
-      );
-      return;
-    }
-
-    // Admin → can only create deadlines, course scope
-    final String finalType = _isSuper ? _type : 'Deadline';
-    final String finalScope = _isSuper ? _scope : 'course';
-
-    if (finalScope == 'course' && _selectedCourse == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select a course')));
-      return;
-    }
-
-    final user = _auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Not logged in')));
-      return;
-    }
-
-    final normalized = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
-    );
-
-    try {
-      await _db.collection('calendarEvents').add({
-        'title': title,
-        'date': Timestamp.fromDate(normalized),
-        'type': finalType, // "Deadline" or "Event"
-        'scope': finalScope, // "global" or "course"
-        'courseCode': finalScope == 'course' ? _selectedCourse?.code : null,
-        'facultyId': _facultyId, // 👈 key piece
-        'ownerId': user.uid,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      _titleCtrl.clear();
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('$finalType added successfully')));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  Future<void> _deleteItem(String id, String ownerId) async {
-    final user = _auth.currentUser;
-    if (user == null) return;
-
-    final bool canDelete =
-        _isSuper || user.uid == ownerId; // super → all, admin → own only
-
-    if (!canDelete) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('You can only delete items you created.')),
-      );
-      return;
-    }
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete item?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-
-    await _db.collection('calendarEvents').doc(id).delete();
-  }
+  // ===================== UI =====================
 
   @override
   Widget build(BuildContext context) {
-    final title = _isSuper
-        ? 'Calendar – events & deadlines'
-        : 'Calendar – deadlines';
-
     return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _buildHeaderCard(),
-            const SizedBox(height: 16),
-            Expanded(child: _buildExistingList()),
-          ],
-        ),
-      ),
+      appBar: AppBar(title: const Text('Calendar & Deadlines')),
+      body: _buildBody(),
     );
   }
 
-  Widget _buildHeaderCard() {
-    if (_headerError != null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.withOpacity(0.4)),
-        ),
-        child: Text(
-          'Error loading data:\n$_headerError',
-          style: const TextStyle(color: Colors.red, fontSize: 13),
-        ),
-      );
-    }
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Create new item',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-
-            // Type row (super admin only)
-            if (_isSuper) ...[
-              Row(
-                children: [
-                  const Text('Type:', style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Deadline'),
-                    selected: _type == 'Deadline',
-                    onSelected: (_) {
-                      setState(() => _type = 'Deadline');
-                    },
-                  ),
-                  const SizedBox(width: 6),
-                  ChoiceChip(
-                    label: const Text('Event'),
-                    selected: _type == 'Event',
-                    onSelected: (_) {
-                      setState(() => _type = 'Event');
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ] else ...[
-              const Text(
-                'Type: Deadline (admins can only add deadlines)',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            // Scope row
-            if (_isSuper) ...[
-              Row(
-                children: [
-                  const Text('Scope:', style: TextStyle(fontSize: 13)),
-                  const SizedBox(width: 8),
-                  ChoiceChip(
-                    label: const Text('Course'),
-                    selected: _scope == 'course',
-                    onSelected: (_) {
-                      setState(() => _scope = 'course');
-                    },
-                  ),
-                  const SizedBox(width: 6),
-                  ChoiceChip(
-                    label: const Text('Global'),
-                    selected: _scope == 'global',
-                    onSelected: (_) {
-                      setState(() => _scope = 'global');
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-            ] else ...[
-              const Text(
-                'Scope: course (linked to one of your courses)',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              const SizedBox(height: 8),
-            ],
-
-            // Course dropdown (if scope == course)
-            if (_scope == 'course' || !_isSuper) ...[
-              if (_loadingCourses)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
-                  child: LinearProgressIndicator(minHeight: 3),
-                )
-              else if (_courses.isEmpty)
-                const Text(
-                  'No courses found to attach.\nCheck that you have courses assigned.',
-                  style: TextStyle(fontSize: 12, color: Colors.redAccent),
-                )
-              else
-                DropdownButtonFormField<_CourseOption>(
-                  initialValue: _selectedCourse,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Course',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _courses
-                      .map(
-                        (c) => DropdownMenuItem<_CourseOption>(
-                          value: c,
-                          child: Text(
-                            '${c.code} – ${c.name}',
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCourse = value;
-                    });
-                  },
-                ),
-              const SizedBox(height: 10),
-            ],
-
-            // Title
-            TextField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'e.g. OS Project deadline',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-
-            // Date picker row
-            Row(
-              children: [
-                const Icon(Icons.calendar_today, size: 18),
-                const SizedBox(width: 6),
-                Text(
-                  '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 13),
-                ),
-                const SizedBox(width: 10),
-                TextButton(
-                  onPressed: _pickDate,
-                  child: const Text('Change date'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Save button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _loadingCourses && (_scope == 'course' || !_isSuper)
-                    ? null
-                    : _createItem,
-                icon: const Icon(Icons.save),
-                label: const Text('Save item'),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExistingList() {
-    final user = _auth.currentUser;
-
-    if (_loadingHeader) {
+  Widget _buildBody() {
+    if (_loadingScope) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_facultyId == null || _facultyId!.isEmpty) {
-      return const Center(
+    if (_scopeError != null || _facultyId == null) {
+      return Center(
         child: Text(
-          'No faculty assigned to this account.\nCannot show events.',
+          'Error:\n${_scopeError ?? "Unknown"}',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13, color: Colors.black54),
         ),
       );
     }
 
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: _db
-          .collection('calendarEvents')
-          .where('facultyId', isEqualTo: _facultyId) // 👈 filter by faculty
-          .orderBy('date')
-          .snapshots(),
-
-      builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snap.hasError) {
-          return Center(
-            child: Text(
-              'Error loading items:\n${snap.error}',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red, fontSize: 13),
+    return Column(
+      children: [
+        // ===== Top form card (same style as before) =====
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Card(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          );
-        }
-
-        final docs = snap.data?.docs ?? [];
-        if (docs.isEmpty) {
-          return const Center(
-            child: Text(
-              'No deadlines or events yet.',
-              style: TextStyle(color: Colors.black54),
-            ),
-          );
-        }
-
-        final String? myUid = user?.uid;
-        final myCourseCodes = _courses.map((c) => c.code).toSet();
-
-        final filtered = docs.where((d) {
-          final data = d.data();
-          final type = (data['type'] ?? '').toString();
-          final scope = (data['scope'] ?? 'global').toString();
-          final courseCode = data['courseCode']?.toString();
-
-          if (type != 'Deadline' && type != 'Event') return false;
-
-          // Super admin → see all
-          if (_isSuper) return true;
-
-          // Admin → only deadlines
-          if (type != 'Deadline') return false;
-
-          // Admin sees:
-          // - global deadlines
-          // - course deadlines for their courses
-          if (scope == 'global') return true;
-          if (scope == 'course' && courseCode != null) {
-            return myCourseCodes.contains(courseCode);
-          }
-          return false;
-        }).toList();
-
-        if (filtered.isEmpty) {
-          return const Center(
-            child: Text(
-              'No items relevant to you.',
-              style: TextStyle(color: Colors.black54),
-            ),
-          );
-        }
-
-        return ListView.separated(
-          itemCount: filtered.length,
-          separatorBuilder: (_, __) => const Divider(height: 1),
-          itemBuilder: (context, index) {
-            final doc = filtered[index];
-            final data = doc.data();
-
-            final id = doc.id;
-            final title = (data['title'] ?? '').toString();
-            final type = (data['type'] ?? 'Deadline').toString();
-            final scope = (data['scope'] ?? 'global').toString();
-            final courseCode = data['courseCode']?.toString();
-            final ownerId = (data['ownerId'] ?? '').toString();
-
-            final ts = data['date'];
-            DateTime date = DateTime.now();
-            if (ts is Timestamp) {
-              date = ts.toDate();
-            }
-
-            final bool canDelete =
-                _isSuper || (myUid != null && myUid == ownerId);
-
-            final typeColor = type == 'Event' ? Colors.green : Colors.redAccent;
-            final scopeLabel = scope == 'global'
-                ? 'Global'
-                : (courseCode ?? 'Course');
-
-            final dateStr =
-                '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 4,
-                vertical: 0,
-              ),
-              leading: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: typeColor.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  type,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: typeColor,
+            elevation: 2,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  // Title
+                  TextField(
+                    controller: _titleController,
+                    decoration: const InputDecoration(
+                      labelText: 'Title',
+                      hintText: 'e.g. Midterm exam, Project 2 deadline',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                ),
-              ),
-              title: Text(
-                title.isEmpty ? '(no title)' : title,
-                style: const TextStyle(fontSize: 14),
-              ),
-              subtitle: Text(
-                '$dateStr • $scopeLabel',
-                style: const TextStyle(fontSize: 12, color: Colors.black54),
-              ),
-              trailing: canDelete
-                  ? IconButton(
-                      icon: const Icon(
-                        Icons.delete_outline,
-                        color: Colors.redAccent,
+                  const SizedBox(height: 12),
+
+                  // Type + Scope row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _selectedType,
+                          decoration: const InputDecoration(
+                            labelText: 'Type',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'Deadline',
+                              child: Text('Deadline'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Event',
+                              child: Text('Event'),
+                            ),
+                          ],
+                          onChanged: (val) {
+                            if (val == null) return;
+                            setState(() {
+                              _selectedType = val;
+                            });
+                          },
+                        ),
                       ),
-                      onPressed: () => _deleteItem(id, ownerId),
-                    )
-                  : null,
-            );
-          },
-        );
-      },
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _scopeForUi(),
+                          decoration: const InputDecoration(
+                            labelText: 'Scope',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _scopeOptions()
+                              .map(
+                                (s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(
+                                    s == 'course'
+                                        ? 'Course only'
+                                        : 'Global (whole faculty)',
+                                  ),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (val) {
+                            if (val == null) return;
+                            // admins can only use 'course'; guarding in _scopeOptions
+                            setState(() {
+                              _selectedScope = val;
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Course dropdown (only when scope == course)
+                  if (_selectedScope == 'course') ...[
+                    if (!_isSuper && _courses.isEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'No courses assigned to this account.\n'
+                          'Ask your super admin to assign courses in Academic Staff.',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.redAccent,
+                          ),
+                        ),
+                      )
+                    else
+                      DropdownButtonFormField<String>(
+                        initialValue: _selectedCourseCode,
+                        decoration: const InputDecoration(
+                          labelText: 'Course',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: _courses
+                            .map(
+                              (c) => DropdownMenuItem(
+                                value: c.code,
+                                child: Text('${c.code} – ${c.name}'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (val) {
+                          setState(() {
+                            _selectedCourseCode = val;
+                          });
+                        },
+                      ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // Date picker
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _selectedDate,
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 365),
+                        ),
+                        lastDate: DateTime.now().add(
+                          const Duration(days: 365 * 5),
+                        ),
+                      );
+                      if (picked != null) {
+                        setState(() {
+                          _selectedDate = picked;
+                        });
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        border: OutlineInputBorder(),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${_selectedDate.year}-${_two(_selectedDate.month)}-${_two(_selectedDate.day)}',
+                          ),
+                          const Icon(Icons.calendar_today, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Add button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _onAddPressed,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Add'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+
+        // ===== Existing events list =====
+        Expanded(
+          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: _eventsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Center(
+                  child: Text(
+                    'Error loading events:\n${snapshot.error}',
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+
+              var docs = snapshot.data?.docs ?? [];
+
+              // Filter for admin (prof) – only their course events + all faculty global
+              if (!_isSuper) {
+                docs = docs.where((doc) {
+                  final data = doc.data();
+                  final scope = (data['scope'] ?? 'global').toString();
+                  if (scope == 'global') return true;
+                  if (scope == 'course') {
+                    final code = data['courseCode']?.toString() ?? '';
+                    return _adminCourseCodes.contains(code);
+                  }
+                  return false;
+                }).toList();
+              }
+
+              if (docs.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'No events or deadlines yet.',
+                    style: TextStyle(fontSize: 13, color: Colors.black54),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                itemCount: docs.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final doc = docs[index];
+                  final data = doc.data();
+
+                  final title = (data['title'] ?? 'Untitled').toString();
+                  final type = (data['type'] ?? 'Event')
+                      .toString(); // Event|Deadline
+                  final scope = (data['scope'] ?? 'global')
+                      .toString(); // course|global
+                  final courseCode = (data['courseCode'] ?? '').toString();
+
+                  final ts = data['date'];
+                  DateTime date;
+                  if (ts is Timestamp) {
+                    date = ts.toDate();
+                  } else if (ts is String) {
+                    date = DateTime.tryParse(ts) ?? DateTime.now();
+                  } else {
+                    date = DateTime.now();
+                  }
+
+                  final dateStr =
+                      '${date.year}-${_two(date.month)}-${_two(date.day)}';
+
+                  String subtitle = '$type • ';
+                  if (scope == 'course' && courseCode.isNotEmpty) {
+                    subtitle += 'Course $courseCode';
+                  } else {
+                    subtitle += 'Global (faculty)';
+                  }
+
+                  return Card(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      title: Text(title),
+                      subtitle: Text('$subtitle • $dateStr'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _deleteEvent(doc.id),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
+  }
+
+  // Helpers for UI
+
+  List<String> _scopeOptions() {
+    // Super admin can choose course/global
+    // Admin: course only
+    if (_isSuper) return ['course', 'global'];
+    return ['course'];
+  }
+
+  String _scopeForUi() {
+    final allowed = _scopeOptions();
+    if (allowed.contains(_selectedScope)) return _selectedScope;
+    return allowed.first;
+  }
+
+  String _two(int n) => n.toString().padLeft(2, '0');
+
+  // ===================== ACTIONS =====================
+
+  Future<void> _onAddPressed() async {
+    if (_facultyId == null) return;
+
+    final title = _titleController.text.trim();
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a title.')));
+      return;
+    }
+
+    // Make sure scope is valid for this role
+    final scope = _scopeForUi();
+
+    if (scope == 'course') {
+      if (_courses.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You have no courses to attach this to.'),
+          ),
+        );
+        return;
+      }
+      if (_selectedCourseCode == null || _selectedCourseCode!.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a course.')),
+        );
+        return;
+      }
+    }
+
+    await _createEvent(
+      title: title,
+      type: _selectedType,
+      scope: scope,
+      date: _selectedDate,
+      courseCode: scope == 'course' ? _selectedCourseCode : null,
+    );
+
+    // Clear title, keep type/scope/date as they are
+    _titleController.clear();
+  }
+
+  Future<void> _deleteEvent(String id) async {
+    try {
+      await _db.collection('calendarEvents').doc(id).delete();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to delete item: $e')));
+    }
+  }
+
+  Future<void> _createEvent({
+    required String title,
+    required String type, // 'Deadline' or 'Event'
+    required String scope, // 'course' or 'global'
+    required DateTime date,
+    String? courseCode,
+  }) async {
+    try {
+      final uid = _auth.currentUser?.uid ?? 'unknown';
+
+      await _db.collection('calendarEvents').add({
+        'title': title,
+        'type': type,
+        'scope': scope,
+        'courseCode': courseCode,
+        'facultyId': _facultyId,
+        'ownerId': uid,
+        'createdByRole': _isSuper ? 'superAdmin' : 'admin',
+        'date': Timestamp.fromDate(DateTime(date.year, date.month, date.day)),
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create item: $e')));
+    }
   }
 }
 
-// simple helper for course dropdown
-class _CourseOption {
+class _CourseItem {
   final String code;
   final String name;
 
-  _CourseOption({required this.code, required this.name});
+  _CourseItem({required this.code, required this.name});
 }

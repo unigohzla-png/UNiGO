@@ -283,24 +283,36 @@ class _SuperAdminCreateFromRegistryPageState
       return;
     }
 
-    if (_selectedMajor == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Select a major.')));
-      return;
+    // Role-specific validation
+    if (_role == 'student') {
+      if (_selectedMajor == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Select a major.')));
+        return;
+      }
+      if (_selectedAdvisor == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Select an advisor.')));
+        return;
+      }
+    } else if (_role == 'admin' || _role == 'superAdmin') {
+      // For professors/admins we still want at least one major
+      if (_selectedMajor == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select at least one major.')),
+        );
+        return;
+      }
+      // Advisor is NOT required for admins
     }
 
-    if (_selectedAdvisor == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Select an advisor.')));
-      return;
-    }
-
-    final createdByUid = FirebaseAuth.instance.currentUser?.uid;
+    final current = FirebaseAuth.instance.currentUser;
+    final createdByUid = current?.uid;
     if (createdByUid == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No logged-in admin found.')),
+        const SnackBar(content: Text('No logged-in super admin.')),
       );
       return;
     }
@@ -311,27 +323,46 @@ class _SuperAdminCreateFromRegistryPageState
     });
 
     try {
-      final result = await SuperAdminUserManagementService.instance
-          .createUserFromCivilRegistry(
-            nationalId: _loadedPerson!.nationalId,
-            role: _role,
-            createdByUid: createdByUid,
-            facultyId: _selectedFaculty!.id,
-            facultyName: _selectedFaculty!.name,
-            majorId: _selectedMajor!.id,
-            majorName: _selectedMajor!.name,
-            advisorId: _selectedAdvisor!.id,
-            advisorName: _selectedAdvisor!.fullName,
-          );
+      final svc = SuperAdminUserManagementService.instance;
+
+      CreatedUserFromCivilResult result;
+
+      if (_role == 'student') {
+        // Existing student flow
+        result = await svc.createUserFromCivilRegistry(
+          nationalId: _loadedPerson!.nationalId,
+          role: _role,
+          createdByUid: createdByUid,
+          facultyId: _selectedFaculty!.id,
+          facultyName: _selectedFaculty!.name,
+          majorId: _selectedMajor!.id,
+          majorName: _selectedMajor!.name,
+          advisorId: _selectedAdvisor!.id,
+          advisorName: _selectedAdvisor!.fullName,
+        );
+      } else {
+        // New admin/professor (and optionally super admin) flow
+        final majorsIds = <String>[_selectedMajor!.id];
+        final majorsNames = <String>[_selectedMajor!.name];
+
+        result = await svc.createAdminFromCivilRegistry(
+          nationalId: _loadedPerson!.nationalId,
+          createdByUid: createdByUid,
+          facultyId: _selectedFaculty!.id,
+          facultyName: _selectedFaculty!.name,
+          majorIds: majorsIds,
+          majorNames: majorsNames,
+          isSuperAdmin: _role == 'superAdmin',
+        );
+      }
 
       if (!mounted) return;
       setState(() {
         _creationResult =
             'User created:\n'
-            'UID: ${result.uid}\n'
-            'University ID: ${result.universityId}\n'
+            'Uni ID: ${result.universityId}\n'
             'Email: ${result.email}\n'
-            'Initial password: ${result.password}';
+            'Temp password: ${result.password}';
       });
 
       ScaffoldMessenger.of(context).showSnackBar(

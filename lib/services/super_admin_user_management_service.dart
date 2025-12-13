@@ -298,6 +298,147 @@ class SuperAdminUserManagementService {
     );
   }
 
+  /// Create an ADMIN (professor) account from the civil registry.
+  ///
+  /// - Creates Firebase Auth user via AdminAuthHelper
+  /// - Creates users/{uid} with role = 'admin' (or 'superAdmin' if [isSuperAdmin] = true)
+  /// - Creates roles/{uid} with role + facultyId + majorIds
+  /// - Creates/updates faculties/{facultyId}/professors/{uid}
+  /// - Links civilRegistry record with linkedUid
+  Future<CreatedUserFromCivilResult> createAdminFromCivilRegistry({
+    required String nationalId,
+    required String createdByUid,
+    required String facultyId,
+    required String facultyName,
+    required List<String> majorIds,
+    required List<String> majorNames,
+    bool isSuperAdmin = false,
+  }) async {
+    // 1) Load civil registry person
+    final CivilPerson? person = await CivilRegistryService.getByNationalId(
+      nationalId,
+    );
+
+    if (person == null) {
+      throw Exception('Civil registry record not found for this national ID.');
+    }
+
+    if (person.linkedUid != null && person.linkedUid!.isNotEmpty) {
+      throw Exception(
+        'This civil record is already linked to a UniGO account.',
+      );
+    }
+
+    // 2) Generate IDs + credentials (same as student)
+    final String universityId = _generateUniversityId();
+    final String password = _generatePassword(person.fullName);
+    final String email = _generateUniversityEmail(
+      person.fullName,
+      universityId,
+    );
+
+    // 3) Create Firebase Auth user via secondary app
+    final String uid = await AdminAuthHelper.createUser(
+      email: email,
+      password: password,
+    );
+
+    // 4) Prepare Firestore refs
+    final usersRef = _db.collection('users').doc(uid);
+    final rolesRef = _db.collection('roles').doc(uid);
+
+    // civilRegistry doc for this nationalId
+    final civilSnap = await _db
+        .collection('civilRegistry')
+        .where('nationalId', isEqualTo: nationalId)
+        .limit(1)
+        .get();
+
+    if (civilSnap.docs.isEmpty) {
+      throw Exception(
+        'Civil registry document not found for this national ID.',
+      );
+    }
+    final civilRef = civilSnap.docs.first.reference;
+
+    // professor doc inside faculty (id = uid)
+    final profRef = _db
+        .collection('faculties')
+        .doc(facultyId)
+        .collection('professors')
+        .doc(uid);
+
+    final batch = _db.batch();
+
+    final String roleValue = isSuperAdmin ? 'superAdmin' : 'admin';
+
+    // 5) users/{uid}
+    batch.set(usersRef, {
+      'name': person.fullName,
+      'email': email,
+      'id': universityId,
+      'nationalId': person.nationalId,
+      'dob': person.dob, // as stored in registry (string)
+      'location': person.location ?? person.placeOfBirth ?? '',
+      'houseaddress': person.houseAddress ?? '',
+      'paynum': person.paynum ?? '',
+      'identifiers': person.identifiers,
+      'phone': person.primaryPhone ?? '',
+      'university': 'JU',
+      'facultyId': facultyId,
+      'faculty': facultyName,
+      // professor-specific
+      'majorIds': majorIds,
+      'majorNames': majorNames,
+      'role': roleValue,
+      'isProfessor': true,
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': createdByUid,
+      'initialPassword': password,
+    });
+
+    // 6) roles/{uid}
+    batch.set(rolesRef, {
+      'role': roleValue,
+      'facultyId': facultyId,
+      'faculty': facultyName,
+      'majorIds': majorIds,
+    }, SetOptions(merge: true));
+
+    // 7) Link civilRegistry record to this uid
+    batch.update(civilRef, {
+      'linkedUid': uid,
+      'linkedAt': FieldValue.serverTimestamp(),
+      'linkedBy': createdByUid,
+    });
+
+    // 8) faculties/{facultyId}/professors/{uid}
+    batch.set(profRef, {
+      'fullName': person.fullName,
+      'email': email,
+      'facultyId': facultyId,
+      'majorIds': majorIds,
+      'canAdvise': false,
+      'maxAdvisees': 0,
+      'adviseesCount': 0,
+      // for future use:
+      'assignedCourseCodes': <String>[],
+      'linkedUid': uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'createdBy': createdByUid,
+    }, SetOptions(merge: true));
+
+    // 9) Commit the batch
+    await batch.commit();
+
+    return CreatedUserFromCivilResult(
+      uid: uid,
+      universityId: universityId,
+      email: email,
+      password: password,
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // DELETE USER DATA
   // ---------------------------------------------------------------------------

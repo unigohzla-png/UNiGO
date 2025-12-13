@@ -48,26 +48,126 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _loadGpa() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
+    if (uid == null) return;
+
+    try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .get();
-      if (doc.exists) {
-        final gpaValue = doc.data()?['gpa'];
-        String gpaStr;
-        if (gpaValue == null) {
-          gpaStr = '—';
-        } else if (gpaValue is num) {
-          gpaStr = gpaValue.toStringAsFixed(1);
-        } else {
-          gpaStr = gpaValue.toString();
-        }
+
+      if (!doc.exists) {
         if (mounted) {
           setState(() {
-            gpa = gpaStr;
+            gpa = '—';
           });
         }
+        return;
+      }
+
+      final data = doc.data() ?? {};
+      final prev = data['previousCourses'];
+
+      // If no previous courses → no GPA
+      if (prev is! Map<String, dynamic> || prev.isEmpty) {
+        if (mounted) {
+          setState(() {
+            gpa = '—';
+          });
+        }
+        return;
+      }
+
+      // Same grade → points mapping as the GPA calculator
+      const Map<String, double> gradePoints = {
+        'A': 4.0,
+        'A-': 3.7,
+        'B+': 3.3,
+        'B': 3.0,
+        'B-': 2.7,
+        'C+': 2.3,
+        'C': 2.0,
+        'C-': 1.7,
+        'D+': 1.3,
+        'D': 1.0,
+        'F': 0.0,
+      };
+
+      double totalCredits = 0.0;
+      double totalPoints = 0.0;
+
+      for (final entry in prev.entries) {
+        final courseCode = entry.key;
+        final value = entry.value;
+
+        if (value is! Map<String, dynamic>) continue;
+
+        // 1) Grade letter
+        String? gradeStr;
+        for (final key in ['gradeLetter', 'grade', 'letter', 'finalGrade']) {
+          final tmp = value[key];
+          if (tmp != null && tmp.toString().trim().isNotEmpty) {
+            gradeStr = tmp.toString().trim().toUpperCase();
+            break;
+          }
+        }
+        if (gradeStr == null) continue;
+
+        final double? point = gradePoints[gradeStr];
+        if (point == null) continue; // ignore W, IP, etc.
+
+        // 2) Credits
+        num? creditsNum;
+        for (final key in ['credits', 'creditHours', 'hours', 'creditHour']) {
+          final tmp = value[key];
+          if (tmp is num) {
+            creditsNum = tmp;
+            break;
+          }
+        }
+
+        double credits = (creditsNum?.toDouble() ?? 0);
+
+        // Optional fallback: read from courses/{code}.credits
+        if (credits <= 0 && courseCode.isNotEmpty) {
+          try {
+            final courseDoc = await FirebaseFirestore.instance
+                .collection('courses')
+                .doc(courseCode)
+                .get();
+            final cData = courseDoc.data();
+            if (cData != null && cData['credits'] is num) {
+              credits = (cData['credits'] as num).toDouble();
+            }
+          } catch (_) {
+            // ignore per-course error
+          }
+        }
+
+        if (credits <= 0) continue;
+
+        totalCredits += credits;
+        totalPoints += point * credits;
+      }
+
+      String gpaStr;
+      if (totalCredits <= 0) {
+        gpaStr = '—';
+      } else {
+        final gpaValue = totalPoints / totalCredits;
+        gpaStr = gpaValue.toStringAsFixed(2);
+      }
+
+      if (mounted) {
+        setState(() {
+          gpa = gpaStr;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          gpa = '—';
+        });
       }
     }
   }
