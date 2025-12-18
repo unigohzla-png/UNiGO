@@ -13,7 +13,7 @@ class AcademicPlanPage extends StatefulWidget {
 }
 
 class _AcademicPlanPageState extends State<AcademicPlanPage> {
-  late AcademicPlanController controller;
+  late final AcademicPlanController controller;
 
   @override
   void initState() {
@@ -140,18 +140,12 @@ class _PlanSummary extends StatelessWidget {
         const SizedBox(height: 2),
         const Text(
           "credits",
-          style: TextStyle(
-            fontSize: 11,
-            color: Colors.black45,
-          ),
+          style: TextStyle(fontSize: 11, color: Colors.black45),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Colors.black54,
-          ),
+          style: const TextStyle(fontSize: 11, color: Colors.black54),
         ),
       ],
     );

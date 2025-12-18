@@ -4,10 +4,7 @@ import '../../models/plan_section.dart';
 class PlanSectionCard extends StatefulWidget {
   final PlanSection section;
 
-  const PlanSectionCard({
-    super.key,
-    required this.section,
-  });
+  const PlanSectionCard({super.key, required this.section});
 
   @override
   State<PlanSectionCard> createState() => _PlanSectionCardState();
@@ -95,23 +92,33 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
         // ---------- EXPANDED COURSE LIST ----------
         if (section.isExpanded)
           Padding(
-            padding:
-                const EdgeInsets.only(left: 24, right: 8, bottom: 8, top: 0),
+            padding: const EdgeInsets.only(left: 24, right: 8, bottom: 8),
             child: Column(
               children: section.courses.map((course) {
                 final String name =
                     course['name']?.toString() ?? 'Unknown course';
-                final String code = course['code']?.toString() ??
-                    course['id']?.toString() ??
-                    '';
-                final int credits = course['credits'] is int
-                    ? course['credits'] as int
-                    : 0;
+                final String code =
+                    (course['code']?.toString() ??
+                            course['id']?.toString() ??
+                            '')
+                        .trim();
+
+                // ✅ safer credits parsing
+                final creditsRaw = course['credits'];
+                final int credits = creditsRaw is int
+                    ? creditsRaw
+                    : int.tryParse(creditsRaw?.toString() ?? '') ?? 0;
 
                 final bool isCompleted = course['isCompleted'] == true;
                 final bool isEnrolled = course['isEnrolled'] == true;
-                final String? grade =
-                    course['grade']?.toString();
+
+                // ✅ trim grade so " " doesn't hide it
+                final String? grade = (() {
+                  final g = course['grade'];
+                  if (g == null) return null;
+                  final s = g.toString().trim();
+                  return s.isEmpty ? null : s;
+                })();
 
                 Color nameColor = Colors.black;
                 FontWeight nameWeight = FontWeight.w500;
@@ -134,7 +141,6 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                   margin: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
-                      // name + credits
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -159,7 +165,6 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                         ),
                       ),
 
-                      // course code
                       if (code.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(right: 8.0),
@@ -173,7 +178,7 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                         ),
 
                       // grade (for completed only)
-                      if (isCompleted && grade != null && grade.isNotEmpty)
+                      if (isCompleted && grade != null)
                         Padding(
                           padding: const EdgeInsets.only(right: 4.0),
                           child: Text(
@@ -187,11 +192,7 @@ class _PlanSectionCardState extends State<PlanSectionCard> {
                         ),
 
                       if (statusIcon != null)
-                        Icon(
-                          statusIcon,
-                          size: 18,
-                          color: statusColor,
-                        ),
+                        Icon(statusIcon, size: 18, color: statusColor),
                     ],
                   ),
                 );

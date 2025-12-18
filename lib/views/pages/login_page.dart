@@ -129,7 +129,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
 
           // Content
-          Column(
+          Column( 
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Image.asset('assets/final_logo.png', height: 200),

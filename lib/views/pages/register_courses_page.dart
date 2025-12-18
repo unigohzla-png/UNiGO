@@ -35,7 +35,7 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
       child: Consumer<RegisterCoursesController>(
         builder: (context, controller, _) {
           return FutureBuilder<void>(
-            future: _loadRegistrationState, // same future every rebuild
+            future: _loadRegistrationState,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Scaffold(
@@ -59,6 +59,10 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                 controller.ensureTimerStarted(useSlotWindow: useSlotWindow);
               }
 
+              // ✅ Can edit only if registration open AND time still remaining
+              final canEdit =
+                  canAccess && controller.remainingTime.inSeconds > 0;
+
               return Scaffold(
                 backgroundColor: Colors.white,
                 appBar: const GlassAppBar(title: 'Register Courses'),
@@ -68,79 +72,44 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
                     children: [
                       _Header(
                         canAccess: canAccess,
+                        canEdit: canEdit,
                         controller: controller,
                       ),
                       const SizedBox(height: 16),
 
-                      // ---------- Registered subjects list ----------
                       Expanded(
                         child: controller.isLoading
-                            ? const Center(
-                                child: CircularProgressIndicator(),
-                              )
+                            ? const Center(child: CircularProgressIndicator())
                             : controller.registeredSubjects.isEmpty
-                                ? const Center(
-                                    child: Text(
-                                      'No subjects registered yet.',
-                                      style: TextStyle(
-                                        color: Colors.black54,
-                                      ),
-                                    ),
-                                  )
-                                : ListView.builder(
-                                    itemCount:
-                                        controller.registeredSubjects.length,
-                                    itemBuilder: (context, index) {
-                                      final subject =
-                                          controller.registeredSubjects[index];
-                                      return _subjectCard(
-                                        context,
-                                        controller,
-                                        subject,
-                                      );
-                                    },
-                                  ),
+                            ? const Center(
+                                child: Text(
+                                  'No subjects registered yet.',
+                                  style: TextStyle(color: Colors.black54),
+                                ),
+                              )
+                            : ListView.builder(
+                                itemCount: controller.registeredSubjects.length,
+                                itemBuilder: (context, index) {
+                                  final subject =
+                                      controller.registeredSubjects[index];
+                                  return _subjectCard(
+                                    context,
+                                    controller,
+                                    subject,
+                                    canEdit: canEdit,
+                                  );
+                                },
+                              ),
                       ),
                     ],
                   ),
                 ),
 
-                // ---------- FAB ----------
                 floatingActionButton: FloatingActionButton(
                   backgroundColor: Colors.blue,
                   onPressed: () {
-                    if (!canAccess) {
-                      showModalBottomSheet(
-                        context: context,
-                        shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(16),
-                          ),
-                        ),
-                        builder: (_) => Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Icon(
-                                Icons.lock_clock,
-                                color: Colors.black54,
-                              ),
-                              SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  'Registration is not open for you now.\n'
-                                  'Please check your reserved time in the Reserve Time page.',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
+                    if (!canEdit) {
+                      _showRegistrationClosedSheet(context);
                       return;
                     }
 
@@ -167,10 +136,12 @@ class _RegisterCoursesPageState extends State<RegisterCoursesPage> {
 
 class _Header extends StatelessWidget {
   final bool canAccess;
+  final bool canEdit;
   final RegisterCoursesController controller;
 
   const _Header({
     required this.canAccess,
+    required this.canEdit,
     required this.controller,
   });
 
@@ -189,7 +160,7 @@ class _Header extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (canAccess) ...[
+          if (canAccess && canEdit) ...[
             const Text(
               'Registration window',
               style: TextStyle(
@@ -213,10 +184,21 @@ class _Header extends StatelessWidget {
                 const Expanded(
                   child: Text(
                     'You have limited time to add or remove subjects.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+          ] else if (canAccess && !canEdit) ...[
+            Row(
+              children: const [
+                Icon(Icons.timer_off, size: 18, color: Colors.black54),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Time ended. Registration actions are locked now.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                 ),
               ],
@@ -230,10 +212,7 @@ class _Header extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'Registration is currently closed. You can still view your registered subjects.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.black54,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
                   ),
                 ),
               ],
@@ -241,7 +220,6 @@ class _Header extends StatelessWidget {
             const SizedBox(height: 10),
           ],
 
-          // Credits summary + mini bar
           Text(
             creditsText,
             style: const TextStyle(
@@ -255,9 +233,10 @@ class _Header extends StatelessWidget {
             borderRadius: BorderRadius.circular(8),
             child: LinearProgressIndicator(
               minHeight: 6,
-              value: (controller.totalRegisteredCredits /
-                      RegisterCoursesController.maxCredits)
-                  .clamp(0.0, 1.0),
+              value:
+                  (controller.totalRegisteredCredits /
+                          RegisterCoursesController.maxCredits)
+                      .clamp(0.0, 1.0),
               backgroundColor: Colors.grey.shade300,
             ),
           ),
@@ -270,10 +249,11 @@ class _Header extends StatelessWidget {
 Widget _subjectCard(
   BuildContext context,
   RegisterCoursesController controller,
-  Subject subject,
-) {
+  Subject subject, {
+  required bool canEdit,
+}) {
   final sec = subject.selectedSection;
-  final hasRealSection = sec != null && sec.id.isNotEmpty; // basic sanity check
+  final hasRealSection = sec != null && sec.id.isNotEmpty;
 
   final String courseTitle = subject.name;
 
@@ -316,7 +296,6 @@ Widget _subjectCard(
     ),
     child: Row(
       children: [
-        // Color stripe
         Container(
           width: 6,
           height: 48,
@@ -327,12 +306,10 @@ Widget _subjectCard(
         ),
         const SizedBox(width: 12),
 
-        // Subject + section info
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Course name + section pill
               Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -369,62 +346,58 @@ Widget _subjectCard(
               ),
               const SizedBox(height: 4),
 
-              // Doctor
               if (doctorLabel.isNotEmpty) ...[
                 Text(
                   doctorLabel,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black87,
-                  ),
+                  style: const TextStyle(fontSize: 13, color: Colors.black87),
                 ),
                 const SizedBox(height: 2),
               ],
 
-              // Days + time
               if (scheduleLabel.isNotEmpty) ...[
                 Text(
                   scheduleLabel,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Colors.black54,
-                  ),
+                  style: const TextStyle(fontSize: 12, color: Colors.black54),
                 ),
                 const SizedBox(height: 2),
               ],
 
-              // Credits
               Text(
                 creditsLabel,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.black45,
-                ),
+                style: const TextStyle(fontSize: 12, color: Colors.black45),
               ),
             ],
           ),
         ),
         const SizedBox(width: 12),
 
-        // Actions: Remove + Switch
         Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              tooltip: 'Remove',
+              tooltip: canEdit ? 'Remove' : 'Locked',
               icon: const Icon(
                 Icons.delete_outline,
                 size: 22,
                 color: Colors.red,
               ),
               onPressed: () async {
+                if (!canEdit) {
+                  _showRegistrationClosedSheet(context);
+                  return;
+                }
                 await controller.removeSubject(subject);
               },
             ),
             IconButton(
-              tooltip: 'Switch',
+              tooltip: canEdit ? 'Switch' : 'Locked',
               icon: const Icon(Icons.swap_horiz, size: 22, color: Colors.blue),
               onPressed: () {
+                if (!canEdit) {
+                  _showRegistrationClosedSheet(context);
+                  return;
+                }
+
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -439,6 +412,32 @@ Widget _subjectCard(
           ],
         ),
       ],
+    ),
+  );
+}
+
+void _showRegistrationClosedSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (_) => Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: const [
+          Icon(Icons.lock_clock, color: Colors.black54),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Registration is not open for you now.\n'
+              'Please check your reserved time in the Reserve Time page.',
+              style: TextStyle(fontSize: 13, color: Colors.black87),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }

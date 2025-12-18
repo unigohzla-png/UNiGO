@@ -23,12 +23,13 @@ class AddSubjectsPage extends StatelessWidget {
           body: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Padding(
-                padding:
-                    EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 8),
                 child: Text(
-                  'Select a subject to add. Conflicting times or exceeding the credit limit will be blocked automatically.',
-                  style: TextStyle(
+                  subjectToReplace == null
+                      ? 'Select a subject to add. Conflicting times or exceeding the credit limit will be blocked automatically.'
+                      : 'Select a subject to replace "${subjectToReplace!.name}". Conflicts and credit limit rules still apply.',
+                  style: const TextStyle(
                     fontSize: 12,
                     color: Colors.black54,
                   ),
@@ -48,8 +49,7 @@ class AddSubjectsPage extends StatelessWidget {
                             padding: const EdgeInsets.all(16),
                             itemCount: controller.availableSubjects.length,
                             itemBuilder: (context, index) {
-                              final subject =
-                                  controller.availableSubjects[index];
+                              final subject = controller.availableSubjects[index];
                               return _subjectCard(
                                 context,
                                 controller,
@@ -72,6 +72,8 @@ class AddSubjectsPage extends StatelessWidget {
     Subject subject,
     Subject? subjectToReplace,
   ) {
+    final alreadyRegistered = controller.registeredSubjects.any((s) => s.code == subject.code);
+
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 6),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -112,73 +114,117 @@ class AddSubjectsPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  '${subject.credits} credits',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Colors.black54,
-                  ),
+                Row(
+                  children: [
+                    Text(
+                      '${subject.credits} credits',
+                      style: const TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                    if (subject.sections.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Text(
+                        '• ${subject.sections.length} sections',
+                        style: const TextStyle(fontSize: 12, color: Colors.black45),
+                      ),
+                    ],
+                  ],
                 ),
+                if (subject.sections.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  const Text(
+                    'Section required',
+                    style: TextStyle(fontSize: 11, color: Colors.black45),
+                  ),
+                ],
               ],
             ),
           ),
 
           IconButton(
-            icon: const Icon(Icons.add_circle, color: Colors.blue, size: 28),
-            onPressed: () async {
-              String? error;
-
-              if (subjectToReplace != null) {
-                // Switch mode (no section handling in switch yet)
-                error = await controller.replaceSubject(
-                  subjectToReplace,
-                  subject,
-                );
-              } else {
-                // Normal add mode: pick section if available
-                CourseSection? chosenSection;
-
-                if (subject.sections.isNotEmpty) {
-                  chosenSection = await showDialog<CourseSection>(
-                    context: context,
-                    builder: (_) => SectionPickerDialog(subject: subject),
-                  );
-
-                  // User cancelled dialog
-                  if (chosenSection == null) {
-                    return;
-                  }
-                }
-
-                error = await controller.addSubject(
-                  subject,
-                  section: chosenSection,
-                );
-              }
-
-              if (error != null) {
-                // Show error dialog
-                // ignore: use_build_context_synchronously
-                showDialog(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Cannot register course'),
-                    content: Text('error'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        child: const Text('OK'),
+            icon: Icon(
+              alreadyRegistered ? Icons.check_circle : Icons.add_circle,
+              color: alreadyRegistered ? Colors.green : Colors.blue,
+              size: 28,
+            ),
+            onPressed: alreadyRegistered
+                ? () {
+                    showDialog(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Already registered'),
+                        content: Text('You already registered "${subject.name}".'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            child: const Text('OK'),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                );
-                return;
-              }
+                    );
+                  }
+                : () async {
+                    // Pick section if available (both add & replace)
+                    CourseSection? chosenSection;
+                    if (subject.sections.isNotEmpty) {
+                      chosenSection = await showDialog<CourseSection>(
+                        context: context,
+                        builder: (_) => SectionPickerDialog(subject: subject),
+                      );
 
-              // Success → close AddSubjectsPage
-              // ignore: use_build_context_synchronously
-              Navigator.pop(context);
-            },
+                      // User cancelled dialog
+                      if (chosenSection == null) return;
+                    }
+
+                    String? error;
+
+                    if (subjectToReplace != null) {
+                      // ✅ Replace flow with section support:
+                      // Remove old course first, then add new course with chosen section.
+                      // This keeps Firestore data consistent (upcomingCourses + upcomingSections).
+                      await controller.removeSubject(subjectToReplace);
+
+                      error = await controller.addSubject(
+                        subject,
+                        section: chosenSection,
+                      );
+
+                      // If add failed, rollback by re-adding the old one (best effort)
+                      if (error != null) {
+                        await controller.addSubject(
+                          subjectToReplace,
+                          section: subjectToReplace.selectedSection,
+                        );
+                      }
+                    } else {
+                      // Normal add flow
+                      error = await controller.addSubject(
+                        subject,
+                        section: chosenSection,
+                      );
+                    }
+
+                    if (error != null) {
+                      // ignore: use_build_context_synchronously
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Cannot register course'),
+                          content: Text('error'), // ✅ FIXED
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              child: const Text('OK'),
+                            ),
+                          ],
+                        ),
+                      );
+                      return;
+                    }
+
+                    // Success → close AddSubjectsPage
+                    // ignore: use_build_context_synchronously
+                    Navigator.pop(context);
+                  },
           ),
         ],
       ),
