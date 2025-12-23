@@ -19,11 +19,14 @@ import 'views/pages/inquiry_subjects_page.dart';
 import 'views/pages/academic_plan_page.dart';
 import 'views/pages/course_page.dart';
 
+import 'views/pages/about_page.dart';
+import 'views/pages/help_page.dart';
+import 'views/pages/notifications_page.dart';
+
 // admin + roles
 import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
-
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -51,13 +54,16 @@ class MyApp extends StatelessWidget {
         '/': (context) => const AuthRoleGate(),
         '/home': (context) => const AuthRoleGate(),
 
-    
         // student-only sub-pages
         '/reserve-time': (context) => const ReserveTimePage(),
         '/register-courses': (context) => const RegisterCoursesPage(),
         '/withdraw-courses': (context) => const WithdrawCoursesPage(),
         '/print-schedule': (context) => const PrintSchedulePage(),
         '/inquiry-subjects': (context) => const InquirySubjectsPage(),
+        '/about': (context) => const AboutPage(),
+        '/help': (context) => const HelpPage(),
+        '/notifications': (context) => const NotificationsPage(),
+
         '/academic-plan': (context) => const AcademicPlanPage(),
         '/course': (context) {
           final args =

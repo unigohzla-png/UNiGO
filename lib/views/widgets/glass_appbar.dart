@@ -76,9 +76,13 @@ class _GlassAppBarState extends State<GlassAppBar> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _menuText("About"),
-                            _menuText("Help"),
-                            _menuText("Notifications"),
+                            _menuNavItem(context, "About", '/about'),
+                            _menuNavItem(context, "Help", '/help'),
+                            _menuNavItem(
+                              context,
+                              "Notifications",
+                              '/notifications',
+                            ),
                             _logoutItem(),
                             const Divider(thickness: 0.8),
                             Row(
@@ -109,6 +113,26 @@ class _GlassAppBarState extends State<GlassAppBar> {
           ),
         );
       },
+    );
+  }
+
+  Widget _menuNavItem(BuildContext context, String label, String route) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.pop(context); // close dialog
+        Navigator.pushNamed(context, route);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+      ),
     );
   }
 
@@ -216,4 +240,3 @@ class _GlassAppBarState extends State<GlassAppBar> {
     );
   }
 }
-
