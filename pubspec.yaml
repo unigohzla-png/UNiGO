@@ -49,6 +49,13 @@ dependencies:
   firebase_messaging: ^16.0.0
   flutter_local_notifications: ^17.2.3
   url_launcher: ^6.3.0
+  liquid_glass_renderer: ^0.2.0-dev.4
+  firebase_storage: ^13.0.5
+  file_picker: ^8.0.0
+  flutter_launcher_icons: ^0.13.1
+
+
+
 
 
 dev_dependencies:
@@ -78,7 +85,6 @@ flutter:
     - assets/DarkRed.png
     - assets/bg.jpg
     - assets/final_logo.png
-
   fonts:
     - family: IBMPlexSans
       fonts:
@@ -120,3 +126,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/UNICIRC.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true

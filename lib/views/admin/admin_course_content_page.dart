@@ -2,6 +2,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_ui/models/user_role.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class AdminCourseContentPage extends StatefulWidget {
   final String courseCode;
@@ -54,75 +58,157 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
 
   Future<void> _addMaterial() async {
     final titleCtrl = TextEditingController();
-    final typeCtrl = TextEditingController(text: 'PDF');
     final metaCtrl = TextEditingController();
-    final urlCtrl = TextEditingController();
 
     final formKey = GlobalKey<FormState>();
+
+    PlatformFile? pickedFile;
+    bool uploading = false;
 
     final result = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Add material'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: titleCtrl,
-                    decoration: const InputDecoration(labelText: 'Title'),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Required' : null,
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return AlertDialog(
+              title: const Text('Add PDF material'),
+              content: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextFormField(
+                        controller: titleCtrl,
+                        decoration: const InputDecoration(labelText: 'Title'),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? 'Required' : null,
+                      ),
+                      TextFormField(
+                        controller: metaCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Meta (optional)',
+                          hintText: 'e.g. "Week 3" or "Chapter 2"',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Pick PDF button
+                      OutlinedButton.icon(
+                        onPressed: uploading
+                            ? null
+                            : () async {
+                                final res = await FilePicker.platform.pickFiles(
+                                  type: FileType.custom,
+                                  allowedExtensions: ['pdf'],
+                                  withData: true, // ✅ IMPORTANT
+                                );
+                                if (res == null || res.files.isEmpty) return;
+
+                                setLocalState(() {
+                                  pickedFile = res.files.single;
+                                });
+                              },
+                        icon: const Icon(Icons.upload_file),
+                        label: Text(
+                          pickedFile == null
+                              ? 'Choose PDF'
+                              : 'Selected: ${pickedFile!.name}',
+                        ),
+                      ),
+
+                      if (uploading) ...[
+                        const SizedBox(height: 12),
+                        const LinearProgressIndicator(),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Uploading...',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
+                    ],
                   ),
-                  TextFormField(
-                    controller: typeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Type (PDF, Link, Video...)',
-                    ),
-                  ),
-                  TextFormField(
-                    controller: metaCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Meta (optional)',
-                      hintText: 'e.g. "Due: 2025-01-10"',
-                    ),
-                  ),
-                  TextFormField(
-                    controller: urlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'URL (optional)',
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                final data = {
-                  'title': titleCtrl.text.trim(),
-                  'type': typeCtrl.text.trim(),
-                  'meta': metaCtrl.text.trim(),
-                  'url': urlCtrl.text.trim(),
-                  'createdAt': FieldValue.serverTimestamp(),
-                };
-                await _courseRef.collection('materials').add(data);
-                if (context.mounted) {
-                  Navigator.pop(context, true);
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
+              actions: [
+                TextButton(
+                  onPressed: uploading
+                      ? null
+                      : () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: uploading
+                      ? null
+                      : () async {
+                          if (!formKey.currentState!.validate()) return;
+
+                          if (pickedFile == null || pickedFile!.path == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please choose a PDF'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          setLocalState(() => uploading = true);
+
+                          try {
+                            // 1) create material doc id first
+                            final docRef = _courseRef
+                                .collection('materials')
+                                .doc();
+
+                            final file = pickedFile!;
+                            final bytes = file.bytes; // because withData:true
+                            if (bytes == null) {
+                              throw Exception(
+                                'File bytes are null. Make sure withData:true is set.',
+                              );
+                            }
+
+                            // 2) upload to storage
+                            final storageRef = FirebaseStorage.instance
+                                .ref()
+                                .child('course_materials')
+                                .child(widget.courseCode)
+                                .child('${docRef.id}_${file.name}');
+
+                            final snap = await storageRef.putData(
+                              bytes,
+                              SettableMetadata(contentType: 'application/pdf'),
+                            );
+
+                            // 3) get url from the uploaded ref (safer)
+                            final downloadUrl = await snap.ref.getDownloadURL();
+
+                            // 4) write firestore doc
+                            await docRef.set({
+                              'title': titleCtrl.text.trim(),
+                              'type': 'PDF',
+                              'meta': metaCtrl.text.trim(),
+                              'url': downloadUrl,
+                              'fileName': file.name,
+                              'storagePath': snap.ref.fullPath,
+                              'createdAt': FieldValue.serverTimestamp(),
+                            });
+
+                            if (context.mounted) Navigator.pop(context, true);
+                          } catch (e) {
+                            setLocalState(() => uploading = false);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Upload failed: $e')),
+                              );
+                            }
+                          }
+                        },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -130,7 +216,7 @@ class _AdminCourseContentPageState extends State<AdminCourseContentPage>
     if (result == true && mounted) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Material added')));
+      ).showSnackBar(const SnackBar(content: Text('Material uploaded')));
     }
   }
 
@@ -356,6 +442,7 @@ class _MaterialsTab extends StatelessWidget {
             final title = (data['title'] ?? 'Untitled') as String;
             final type = (data['type'] ?? '') as String;
             final meta = (data['meta'] ?? '') as String;
+            final url = (data['url'] ?? '') as String;
 
             return Material(
               color: Colors.white,
@@ -372,12 +459,29 @@ class _MaterialsTab extends StatelessWidget {
                 subtitle: meta.isEmpty
                     ? null
                     : Text(meta, style: const TextStyle(fontSize: 12)),
-                trailing: canEdit
-                    ? IconButton(
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (url.isNotEmpty)
+                      IconButton(
+                        icon: const Icon(Icons.open_in_new),
+                        onPressed: () async {
+                          final uri = Uri.tryParse(url);
+                          if (uri != null) {
+                            await launchUrl(
+                              uri,
+                              mode: LaunchMode.externalApplication,
+                            );
+                          }
+                        },
+                      ),
+                    if (canEdit)
+                      IconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () => onDelete(doc.id),
-                      )
-                    : null,
+                      ),
+                  ],
+                ),
               ),
             );
           },

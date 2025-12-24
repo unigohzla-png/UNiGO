@@ -197,7 +197,7 @@ class SuperAdminUserManagementService {
     }
 
     // 2) Generate IDs + credentials
-    final String universityId = _generateUniversityId();
+    final String universityId = await _generateUniversityId();
     final String password = _generatePassword(person.fullName);
     final String email = _generateUniversityEmail(
       person.fullName,
@@ -330,7 +330,7 @@ class SuperAdminUserManagementService {
     }
 
     // 2) Generate IDs + credentials (same as student)
-    final String universityId = _generateUniversityId();
+    final String universityId = await _generateUniversityId();
     final String password = _generatePassword(person.fullName);
     final String email = _generateUniversityEmail(
       person.fullName,
@@ -509,13 +509,34 @@ class SuperAdminUserManagementService {
     return '$firstLetter$symbol$digits';
   }
 
-  /// 0 + last two digits of year + 4 random digits
-  /// e.g. 2025 → 0251234
-  String _generateUniversityId() {
+  /// 0 + last two digits of year + 4 sequential digits
+  /// e.g. 2025 → 0250001 then 0250002 ...
+  Future<String> _generateUniversityId() async {
     final now = DateTime.now();
     final yy = (now.year % 100).toString().padLeft(2, '0');
-    final random = Random.secure().nextInt(10000).toString().padLeft(4, '0');
-    return '0$yy$random';
+
+    // Counter doc per year (e.g., counters/universityId_25)
+    final counterRef = _db.collection('counters').doc('universityId_$yy');
+
+    final int seq = await _db.runTransaction<int>((tx) async {
+      final snap = await tx.get(counterRef);
+      final data = snap.data() as Map<String, dynamic>?;
+
+      final current = (data?['next'] ?? 1) as int;
+
+      // increment for next user
+      tx.set(counterRef, {'next': current + 1}, SetOptions(merge: true));
+
+      return current;
+    });
+
+    // Keep the same 4-digit format. If you ever exceed 9999, handle it here.
+    if (seq > 9999) {
+      throw Exception('University ID sequence exceeded 9999 for year $yy.');
+    }
+
+    final digits = seq.toString().padLeft(4, '0');
+    return '0$yy$digits';
   }
 
   /// three letters from first name + universityId + @ju.edu.jo

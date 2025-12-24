@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_ui/services/push_notifications_service.dart';
 
 import 'firebase_options.dart';
 
@@ -28,11 +28,14 @@ import 'models/user_role.dart';
 import 'services/role_service.dart';
 import 'views/admin/admin_root_page.dart';
 
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await PushNotificationsService.instance.init(); // ✅ add this
+
   runApp(const MyApp());
 }
 
@@ -149,7 +152,7 @@ class _MainScaffoldState extends State<MainScaffold> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color.fromARGB(255, 255, 255, 255),
       body: Stack(
         children: [
           IndexedStack(index: selectedIndex, children: _pages),
@@ -158,47 +161,43 @@ class _MainScaffoldState extends State<MainScaffold> {
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 24),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(40),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-                  child: Container(
-                    width: 300,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.white.withOpacity(0.25),
-                          Colors.white.withOpacity(0.08),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+              child: LiquidGlass.withOwnLayer(
+                settings: const LiquidGlassSettings(
+                  thickness: 18,
+                  blur: 10,
+                  glassColor: Color(0x22FFFFFF),
+                  saturation: 1.15,
+                  lightIntensity: 0.6, // tweak this for “edge/highlight” feel
+                  ambientStrength: 0.05, // tweak this for overall brightness
+                  refractiveIndex: 1.2,  // optional
+                  chromaticAberration: .01, // optional
+                ),
+                shape: LiquidRoundedSuperellipse(borderRadius: 40),
+                child: Container(
+                  width: 300,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  // keep your same nav content
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(40),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black12,
+                        blurRadius: 20,
+                        offset: Offset(0, 6),
                       ),
-                      borderRadius: BorderRadius.circular(40),
-                      border: Border.all(
-                        color: Colors.white.withOpacity(0.6),
-                        width: 1.4,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 20,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildNavItem(Icons.home, "Home", 0),
-                        _buildNavItem(Icons.book, "Courses", 1),
-                        _buildNavItem(Icons.calendar_today, "Calendar", 2),
-                        _buildNavItem(Icons.person, "Profile", 3),
-                      ],
-                    ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildNavItem(Icons.home, "Home", 0),
+                      _buildNavItem(Icons.book, "Courses", 1),
+                      _buildNavItem(Icons.calendar_today, "Calendar", 2),
+                      _buildNavItem(Icons.person, "Profile", 3),
+                    ],
                   ),
                 ),
               ),

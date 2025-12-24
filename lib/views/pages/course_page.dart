@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../controllers/course_details_controller.dart';
 import '../../models/grade_models.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CoursePage extends StatelessWidget {
   final String title;
@@ -165,8 +166,18 @@ class _MaterialItem extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: null, // later: mark as done per student
-            child: const Text('Mark as done'),
+            onPressed: material.url.isEmpty
+                ? null
+                : () async {
+                    final uri = Uri.tryParse(material.url);
+                    if (uri != null) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  },
+            child: const Text('Open PDF'),
           ),
         ],
       ),
@@ -188,13 +199,14 @@ class _CourseSessionsTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<CourseDetailsController>(
       builder: (context, ctrl, _) {
-        debugPrint('SessionsTab: loading=${ctrl.loadingCourse}, '
-            'courseCode=${ctrl.courseCode}, sections=${ctrl.sections.length}');
+        debugPrint(
+          'SessionsTab: loading=${ctrl.loadingCourse}, '
+          'courseCode=${ctrl.courseCode}, sections=${ctrl.sections.length}',
+        );
 
         if (ctrl.loadingCourse) {
           return const Center(child: CircularProgressIndicator());
         }
-
 
         if (ctrl.courseCode == null || ctrl.sections.isEmpty) {
           return const Center(

@@ -10,12 +10,14 @@ class MaterialItem {
   final String title;
   final String type;
   final String meta;
+  final String url;
 
   MaterialItem({
     required this.id,
     required this.title,
     required this.type,
     required this.meta,
+    required this.url,
   });
 
   factory MaterialItem.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
@@ -25,6 +27,7 @@ class MaterialItem {
       title: (data['title'] ?? '') as String,
       type: (data['type'] ?? '') as String,
       meta: (data['meta'] ?? '') as String,
+      url: (data['url'] ?? '') as String,
     );
   }
 }
