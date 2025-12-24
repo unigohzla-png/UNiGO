@@ -53,6 +53,10 @@ dependencies:
   firebase_storage: ^13.0.5
   file_picker: ^8.0.0
   flutter_launcher_icons: ^0.13.1
+  shared_preferences: ^2.2.3
+  http: ^1.2.2
+
+
 
 
 

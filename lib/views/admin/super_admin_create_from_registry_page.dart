@@ -266,6 +266,41 @@ class _SuperAdminCreateFromRegistryPageState
 
   // ====== CREATE USER ======
 
+  Future<void> _queueWelcomeEmail({
+    required String toEmail,
+    required CreatedUserFromCivilResult result,
+    required String fullName,
+  }) async {
+    final subject = 'Welcome to UniGo 🎓';
+    final loginEmail = result.email;
+    final tempPassword = result.password;
+    final uniId = result.universityId;
+
+    final docRef = await FirebaseFirestore.instance.collection('mail').add({
+      'to': [toEmail],
+      'message': {
+        'subject': subject,
+        'text':
+            'Hello $fullName,\n\n'
+            'Your UniGo account has been created.\n\n'
+            'Uni ID: $uniId\n'
+            'UniGo Login Email: $loginEmail\n'
+            'Temporary Password: $tempPassword\n\n'
+            'Please log in and change your password after the first login.\n',
+        'html':
+            '<p>Hello <b>$fullName</b>,</p>'
+            '<p>Your UniGo account has been created.</p>'
+            '<p><b>Uni ID:</b> $uniId<br/>'
+            '<b>UniGo Login Email:</b> $loginEmail<br/>'
+            '<b>Temporary Password:</b> $tempPassword</p>'
+            '<p>Please log in and change your password after the first login.</p>',
+      },
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+
+    debugPrint('✅ mail queued: ${docRef.id}');
+  }
+
   Future<void> _createUser() async {
     if (_loadedPerson == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -354,6 +389,32 @@ class _SuperAdminCreateFromRegistryPageState
           majorNames: majorsNames,
           isSuperAdmin: _role == 'superAdmin',
         );
+      }
+      final toEmail = (_loadedPerson!.email ?? '').trim();
+      debugPrint('📩 Civil email = "$toEmail"');
+
+      if (toEmail.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No email found in Civil Registry for this person.'),
+          ),
+        );
+      } else {
+        try {
+          await _queueWelcomeEmail(
+            toEmail: toEmail,
+            result: result,
+            fullName: _loadedPerson!.fullName,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Welcome email queued ✅')),
+          );
+        } catch (e) {
+          debugPrint('❌ Email queue failed: $e');
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Email queue failed: $e')));
+        }
       }
 
       if (!mounted) return;
@@ -489,6 +550,7 @@ class _SuperAdminCreateFromRegistryPageState
             const SizedBox(height: 8),
             _buildInfoRow('Full name', person.fullName),
             _buildInfoRow('National ID', person.nationalId),
+            if (person.email != null) _buildInfoRow('Email', person.email!),
             if (person.dob != null) _buildInfoRow('Date of birth', person.dob!),
             if (person.location != null)
               _buildInfoRow('Location', person.location!),
@@ -536,6 +598,12 @@ class _SuperAdminCreateFromRegistryPageState
                 if (val == null) return;
                 setState(() {
                   _role = val;
+
+                  // ✅ If not student, advisor is not used
+                  if (_role != 'student') {
+                    _selectedAdvisor = null;
+                    _advisors = [];
+                  }
                 });
               },
             ),
@@ -599,8 +667,18 @@ class _SuperAdminCreateFromRegistryPageState
                       final major = _majors.firstWhere((m) => m.id == val);
                       setState(() {
                         _selectedMajor = major;
+
+                        // ✅ reset advisor when changing major (only for students)
+                        if (_role == 'student') {
+                          _selectedAdvisor = null;
+                          _advisors = [];
+                        }
                       });
-                      _loadAdvisorsForMajor(major);
+
+                      // ✅ only students need advisors
+                      if (_role == 'student') {
+                        _loadAdvisorsForMajor(major);
+                      }
                     },
             ),
             if (_loadingMajors)
@@ -609,48 +687,56 @@ class _SuperAdminCreateFromRegistryPageState
                 child: LinearProgressIndicator(minHeight: 2),
               ),
             const SizedBox(height: 12),
-            // ===== Advisor =====
-            DropdownButtonFormField<String>(
-              isExpanded: true,
-              initialValue: _selectedAdvisor?.id,
-              decoration: const InputDecoration(
-                labelText: 'Advisor',
-                border: OutlineInputBorder(),
-              ),
-              items: _advisors
-                  .map(
-                    (p) => DropdownMenuItem<String>(
-                      value: p.id,
-                      child: Text(p.fullName, overflow: TextOverflow.ellipsis),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _loadingAdvisors
-                  ? null
-                  : (val) {
-                      if (val == null) return;
-                      final prof = _advisors.firstWhere((p) => p.id == val);
-                      setState(() {
-                        _selectedAdvisor = prof;
-                      });
-                    },
-            ),
-            if (_loadingAdvisors)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: _advisors.isEmpty || _loadingAdvisors
+            if (_role == 'student') ...[
+              const SizedBox(height: 12),
+
+              // ===== Advisor =====
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _selectedAdvisor?.id,
+                decoration: const InputDecoration(
+                  labelText: 'Advisor',
+                  border: OutlineInputBorder(),
+                ),
+                items: _advisors
+                    .map(
+                      (p) => DropdownMenuItem<String>(
+                        value: p.id,
+                        child: Text(
+                          p.fullName,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: _loadingAdvisors
                     ? null
-                    : _pickRandomAdvisor,
-                icon: const Icon(Icons.shuffle),
-                label: const Text('Pick random advisor'),
+                    : (val) {
+                        if (val == null) return;
+                        final prof = _advisors.firstWhere((p) => p.id == val);
+                        setState(() {
+                          _selectedAdvisor = prof;
+                        });
+                      },
               ),
-            ),
+              if (_loadingAdvisors)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: LinearProgressIndicator(minHeight: 2),
+                ),
+
+              const SizedBox(height: 8),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: _advisors.isEmpty || _loadingAdvisors
+                      ? null
+                      : _pickRandomAdvisor,
+                  icon: const Icon(Icons.shuffle),
+                  label: const Text('Pick random advisor'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

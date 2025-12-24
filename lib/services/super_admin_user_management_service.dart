@@ -381,7 +381,7 @@ class SuperAdminUserManagementService {
       'dob': person.dob, // as stored in registry (string)
       'location': person.location ?? person.placeOfBirth ?? '',
       'houseaddress': person.houseAddress ?? '',
-      'paynum': person.paynum ?? '',
+      'paynum': person.paynum, // ✅ add this
       'identifiers': person.identifiers,
       'phone': person.primaryPhone ?? '',
       'university': 'JU',

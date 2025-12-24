@@ -13,6 +13,7 @@ class CivilPerson {
   final String? location;
   final String? houseAddress; // "houseadress" / "houseaddress" in Firestore
   final String? paynum;
+  final String? email;
 
   // Phones
   final List<String> identifiers; // all phone numbers
@@ -24,7 +25,8 @@ class CivilPerson {
 
   final String? linkedUid;
 
-  CivilPerson({
+  CivilPerson(
+    this.email, {
     required this.id,
     required this.fullName,
     required this.nationalId,
@@ -64,7 +66,22 @@ class CivilPerson {
         ?.toString();
 
     // paynum from registry
-    final paynum = data['paynum']?.toString();
+    String? _readAny(Map<String, dynamic> data, List<String> keys) {
+      for (final k in keys) {
+        final v = data[k];
+        if (v == null) continue;
+        final s = v.toString().trim();
+        if (s.isNotEmpty) return s;
+      }
+      return null;
+    }
+
+    // paynum from registry (support multiple keys)
+    final paynum = (data['paynum'] ?? data['payNum'] ?? data['pay_num'])
+        ?.toString();
+
+    final emailRaw = (data['email'] ?? '').toString().trim();
+    final String? email = emailRaw.isEmpty ? null : emailRaw;
 
     // identifiers: list or map of phones
     final rawIdentifiers = data['identifiers'];
@@ -85,6 +102,7 @@ class CivilPerson {
     }
 
     return CivilPerson(
+      email,
       id: doc.id,
       fullName: fullName,
       nationalId: nationalId,
@@ -115,6 +133,7 @@ class CivilPerson {
       if (motherName != null) 'motherName': motherName,
       if (fatherName != null) 'fatherName': fatherName,
       if (linkedUid != null) 'linkedUid': linkedUid,
+      if (email != null) 'email': email,
     };
   }
 }

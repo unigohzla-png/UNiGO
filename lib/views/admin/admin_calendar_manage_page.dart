@@ -128,6 +128,12 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
         adminCodes.addAll(assignedCodes);
       }
 
+      // keep selected course valid
+      if (_selectedCourseCode != null &&
+          !courses.any((c) => c.code == _selectedCourseCode)) {
+        _selectedCourseCode = null;
+      }
+
       setState(() {
         _facultyId = trimmedFacultyId;
         _courses = courses;
@@ -159,6 +165,7 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(title: const Text('Calendar & Deadlines')),
       body: _buildBody(),
     );
@@ -178,284 +185,355 @@ class _AdminCalendarManagePageState extends State<AdminCalendarManagePage> {
       );
     }
 
-    return Column(
-      children: [
-        // ===== Top form card (same style as before) =====
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Card(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            elevation: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Title
-                  TextField(
-                    controller: _titleController,
-                    decoration: const InputDecoration(
-                      labelText: 'Title',
-                      hintText: 'e.g. Midterm exam, Project 2 deadline',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
+    // ✅ One scroll view for the whole page -> no overflow with keyboard/small screens
+    return SafeArea(
+      child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: _eventsStream(),
+        builder: (context, snapshot) {
+          Widget sliverBody;
 
-                  // Type + Scope row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _selectedType,
-                          decoration: const InputDecoration(
-                            labelText: 'Type',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'Deadline',
-                              child: Text('Deadline'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'Event',
-                              child: Text('Event'),
-                            ),
-                          ],
-                          onChanged: (val) {
-                            if (val == null) return;
-                            setState(() {
-                              _selectedType = val;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          initialValue: _scopeForUi(),
-                          decoration: const InputDecoration(
-                            labelText: 'Scope',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: _scopeOptions()
-                              .map(
-                                (s) => DropdownMenuItem(
-                                  value: s,
-                                  child: Text(
-                                    s == 'course'
-                                        ? 'Course only'
-                                        : 'Global (whole faculty)',
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (val) {
-                            if (val == null) return;
-                            // admins can only use 'course'; guarding in _scopeOptions
-                            setState(() {
-                              _selectedScope = val;
-                            });
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Course dropdown (only when scope == course)
-                  if (_selectedScope == 'course') ...[
-                    if (!_isSuper && _courses.isEmpty)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          'No courses assigned to this account.\n'
-                          'Ask your super admin to assign courses in Academic Staff.',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.redAccent,
-                          ),
-                        ),
-                      )
-                    else
-                      DropdownButtonFormField<String>(
-                        initialValue: _selectedCourseCode,
-                        decoration: const InputDecoration(
-                          labelText: 'Course',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: _courses
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c.code,
-                                child: Text('${c.code} – ${c.name}'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (val) {
-                          setState(() {
-                            _selectedCourseCode = val;
-                          });
-                        },
-                      ),
-                    const SizedBox(height: 12),
-                  ],
-
-                  // Date picker
-                  InkWell(
-                    onTap: () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _selectedDate,
-                        firstDate: DateTime.now().subtract(
-                          const Duration(days: 365),
-                        ),
-                        lastDate: DateTime.now().add(
-                          const Duration(days: 365 * 5),
-                        ),
-                      );
-                      if (picked != null) {
-                        setState(() {
-                          _selectedDate = picked;
-                        });
-                      }
-                    },
-                    child: InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Date',
-                        border: OutlineInputBorder(),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            '${_selectedDate.year}-${_two(_selectedDate.month)}-${_two(_selectedDate.day)}',
-                          ),
-                          const Icon(Icons.calendar_today, size: 18),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Add button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _onAddPressed,
-                      icon: const Icon(Icons.add),
-                      label: const Text('Add'),
-                    ),
-                  ),
-                ],
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              !snapshot.hasData) {
+            sliverBody = const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            );
+          } else if (snapshot.hasError) {
+            sliverBody = SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Text(
+                  'Error loading events:\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-          ),
-        ),
+            );
+          } else {
+            var docs = snapshot.data?.docs ?? [];
 
-        // ===== Existing events list =====
-        Expanded(
-          child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: _eventsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting &&
-                  !snapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
-              }
+            // Filter for admin (prof) – only their course events + all faculty global
+            if (!_isSuper) {
+              docs = docs.where((doc) {
+                final data = doc.data();
+                final scope = (data['scope'] ?? 'global').toString();
+                if (scope == 'global') return true;
+                if (scope == 'course') {
+                  final code = data['courseCode']?.toString() ?? '';
+                  return _adminCourseCodes.contains(code);
+                }
+                return false;
+              }).toList();
+            }
 
-              if (snapshot.hasError) {
-                return Center(
-                  child: Text(
-                    'Error loading events:\n${snapshot.error}',
-                    textAlign: TextAlign.center,
-                  ),
-                );
-              }
-
-              var docs = snapshot.data?.docs ?? [];
-
-              // Filter for admin (prof) – only their course events + all faculty global
-              if (!_isSuper) {
-                docs = docs.where((doc) {
-                  final data = doc.data();
-                  final scope = (data['scope'] ?? 'global').toString();
-                  if (scope == 'global') return true;
-                  if (scope == 'course') {
-                    final code = data['courseCode']?.toString() ?? '';
-                    return _adminCourseCodes.contains(code);
-                  }
-                  return false;
-                }).toList();
-              }
-
-              if (docs.isEmpty) {
-                return const Center(
+            if (docs.isEmpty) {
+              sliverBody = const SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
                   child: Text(
                     'No events or deadlines yet.',
                     style: TextStyle(fontSize: 13, color: Colors.black54),
                     textAlign: TextAlign.center,
                   ),
-                );
-              }
-
-              return ListView.separated(
+                ),
+              );
+            } else {
+              sliverBody = SliverPadding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 8,
                 ),
-                itemCount: docs.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final doc = docs[index];
-                  final data = doc.data();
+                sliver: SliverList.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final data = doc.data();
 
-                  final title = (data['title'] ?? 'Untitled').toString();
-                  final type = (data['type'] ?? 'Event')
-                      .toString(); // Event|Deadline
-                  final scope = (data['scope'] ?? 'global')
-                      .toString(); // course|global
-                  final courseCode = (data['courseCode'] ?? '').toString();
+                    final title = (data['title'] ?? 'Untitled').toString();
+                    final type = (data['type'] ?? 'Event')
+                        .toString(); // Event|Deadline
+                    final scope = (data['scope'] ?? 'global')
+                        .toString(); // course|global
+                    final courseCode = (data['courseCode'] ?? '').toString();
 
-                  final ts = data['date'];
-                  DateTime date;
-                  if (ts is Timestamp) {
-                    date = ts.toDate();
-                  } else if (ts is String) {
-                    date = DateTime.tryParse(ts) ?? DateTime.now();
-                  } else {
-                    date = DateTime.now();
-                  }
+                    final ts = data['date'];
+                    DateTime date;
+                    if (ts is Timestamp) {
+                      date = ts.toDate();
+                    } else if (ts is String) {
+                      date = DateTime.tryParse(ts) ?? DateTime.now();
+                    } else {
+                      date = DateTime.now();
+                    }
 
-                  final dateStr =
-                      '${date.year}-${_two(date.month)}-${_two(date.day)}';
+                    final dateStr =
+                        '${date.year}-${_two(date.month)}-${_two(date.day)}';
 
-                  String subtitle = '$type • ';
-                  if (scope == 'course' && courseCode.isNotEmpty) {
-                    subtitle += 'Course $courseCode';
-                  } else {
-                    subtitle += 'Global (faculty)';
-                  }
+                    String subtitle = '$type • ';
+                    if (scope == 'course' && courseCode.isNotEmpty) {
+                      subtitle += 'Course $courseCode';
+                    } else {
+                      subtitle += 'Global (faculty)';
+                    }
 
-                  return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      title: Text(title),
-                      subtitle: Text('$subtitle • $dateStr'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () => _deleteEvent(doc.id),
+                    return Card(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                  );
-                },
+                      child: ListTile(
+                        title: Text(title),
+                        subtitle: Text('$subtitle • $dateStr'),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _deleteEvent(doc.id),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               );
-            },
-          ),
-        ),
-      ],
+            }
+          }
+
+          return CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              // Extra space when keyboard shows
+              SliverPadding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    children: [
+                      // ===== Top form card (same style as before) =====
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Card(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 2,
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                // Title
+                                TextField(
+                                  controller: _titleController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Title',
+                                    hintText:
+                                        'e.g. Midterm exam, Project 2 deadline',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+
+                                // Type + Scope (responsive: Row on wide screens, Column on narrow)
+                                LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final isNarrow = constraints.maxWidth < 420;
+
+                                    final typeField =
+                                        DropdownButtonFormField<String>(
+                                          isExpanded: true, // ✅ important
+                                          initialValue: _selectedType,
+                                          decoration: const InputDecoration(
+                                            labelText: 'Type',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          items: const [
+                                            DropdownMenuItem(
+                                              value: 'Deadline',
+                                              child: Text(
+                                                'Deadline',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            DropdownMenuItem(
+                                              value: 'Event',
+                                              child: Text(
+                                                'Event',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                          onChanged: (val) {
+                                            if (val == null) return;
+                                            setState(() => _selectedType = val);
+                                          },
+                                        );
+
+                                    final scopeField =
+                                        DropdownButtonFormField<String>(
+                                          isExpanded: true, // ✅ important
+                                          initialValue: _scopeForUi(),
+                                          decoration: const InputDecoration(
+                                            labelText: 'Scope',
+                                            border: OutlineInputBorder(),
+                                          ),
+                                          items: _scopeOptions()
+                                              .map(
+                                                (s) => DropdownMenuItem(
+                                                  value: s,
+                                                  child: Text(
+                                                    s == 'course'
+                                                        ? 'Course only'
+                                                        : 'Global (whole faculty)',
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow
+                                                        .ellipsis, // ✅ important
+                                                  ),
+                                                ),
+                                              )
+                                              .toList(),
+                                          onChanged: (val) {
+                                            if (val == null) return;
+                                            setState(() {
+                                              _selectedScope = val;
+                                              if (_selectedScope == 'global')
+                                                _selectedCourseCode = null;
+                                            });
+                                          },
+                                        );
+
+                                    if (isNarrow) {
+                                      return Column(
+                                        children: [
+                                          typeField,
+                                          const SizedBox(height: 12),
+                                          scopeField,
+                                        ],
+                                      );
+                                    }
+
+                                    return Row(
+                                      children: [
+                                        Expanded(child: typeField),
+                                        const SizedBox(width: 12),
+                                        Expanded(child: scopeField),
+                                      ],
+                                    );
+                                  },
+                                ),
+
+                                // Course dropdown (only when scope == course)
+                                if (_selectedScope == 'course') ...[
+                                  const SizedBox(
+                                    height: 16,
+                                  ), // ✅ extra gap under Scope
+
+                                  if (!_isSuper && _courses.isEmpty)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'No courses assigned to this account.\n'
+                                        'Ask your super admin to assign courses in Academic Staff.',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.redAccent,
+                                        ),
+                                      ),
+                                    )
+                                  else
+                                    DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      initialValue: _selectedCourseCode,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Course',
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      items: _courses
+                                          .map(
+                                            (c) => DropdownMenuItem(
+                                              value: c.code,
+                                              child: Text(
+                                                '${c.code} – ${c.name}',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          )
+                                          .toList(),
+                                      onChanged: (val) {
+                                        setState(
+                                          () => _selectedCourseCode = val,
+                                        );
+                                      },
+                                    ),
+
+                                  const SizedBox(height: 12),
+                                ],
+
+                                // Date picker
+                                InkWell(
+                                  onTap: () async {
+                                    final picked = await showDatePicker(
+                                      context: context,
+                                      initialDate: _selectedDate,
+                                      firstDate: DateTime.now().subtract(
+                                        const Duration(days: 365),
+                                      ),
+                                      lastDate: DateTime.now().add(
+                                        const Duration(days: 365 * 5),
+                                      ),
+                                    );
+                                    if (picked != null) {
+                                      setState(() {
+                                        _selectedDate = picked;
+                                      });
+                                    }
+                                  },
+                                  child: InputDecorator(
+                                    decoration: const InputDecoration(
+                                      labelText: 'Date',
+                                      border: OutlineInputBorder(),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          '${_selectedDate.year}-${_two(_selectedDate.month)}-${_two(_selectedDate.day)}',
+                                        ),
+                                        const Icon(
+                                          Icons.calendar_today,
+                                          size: 18,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+
+                                // Add button
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: _onAddPressed,
+                                    icon: const Icon(Icons.add),
+                                    label: const Text('Add'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              // ===== Existing events list sliver =====
+              sliverBody,
+            ],
+          );
+        },
+      ),
     );
   }
 

@@ -16,15 +16,11 @@ class PersonalInfoPage extends StatefulWidget {
 class _PersonalInfoPageState extends State<PersonalInfoPage> {
   final PersonalInfoController controller = PersonalInfoController();
 
-  // Text controllers for each editable field
+  // Editable fields only
   final TextEditingController addressC = TextEditingController();
   final TextEditingController emailC = TextEditingController();
   final TextEditingController phoneC = TextEditingController();
   final TextEditingController altPhoneC = TextEditingController();
-  final TextEditingController id1C = TextEditingController();
-  final TextEditingController id1PhoneC = TextEditingController();
-  final TextEditingController id2C = TextEditingController();
-  final TextEditingController id2PhoneC = TextEditingController();
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -43,21 +39,15 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         emailC.text = info.email;
         phoneC.text = info.phone;
         altPhoneC.text = info.altPhone;
-        id1C.text = info.identifier1;
-        id1PhoneC.text = info.identifier1Phone;
-        id2C.text = info.identifier2;
-        id2PhoneC.text = info.identifier2Phone;
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load info: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load info: $e')),
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -68,17 +58,11 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     emailC.dispose();
     phoneC.dispose();
     altPhoneC.dispose();
-    id1C.dispose();
-    id1PhoneC.dispose();
-    id2C.dispose();
-    id2PhoneC.dispose();
     super.dispose();
   }
 
   Future<void> _save() async {
-    setState(() {
-      _isSaving = true;
-    });
+    setState(() => _isSaving = true);
 
     try {
       final info = PersonalInfo(
@@ -86,29 +70,23 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         email: emailC.text.trim(),
         phone: phoneC.text.trim(),
         altPhone: altPhoneC.text.trim(),
-        identifier1: id1C.text.trim(),
-        identifier1Phone: id1PhoneC.text.trim(),
-        identifier2: id2C.text.trim(),
-        identifier2Phone: id2PhoneC.text.trim(),
       );
 
       await controller.updateInfo(info);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Personal info saved.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Personal info saved.')),
+      );
       Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save info: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save info: $e')),
+      );
     } finally {
       if (mounted) {
-        setState(() {
-          _isSaving = false;
-        });
+        setState(() => _isSaving = false);
       }
     }
   }
@@ -129,16 +107,12 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildContactInfoCard(primaryColor),
-                  const SizedBox(height: 24),
-                  _buildIdentifiersCard(primaryColor),
                 ],
               ),
             ),
       bottomNavigationBar: _isLoading ? null : _buildBottomBar(primaryColor),
     );
   }
-
-  // ===== UI helpers =====
 
   Widget _buildContactInfoCard(Color primaryColor) {
     return ClipRRect(
@@ -192,87 +166,6 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                 controller: altPhoneC,
                 hint: '079736462084',
                 icon: Icons.phone_android,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIdentifiersCard(Color primaryColor) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-        child: Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            color: Colors.white.withOpacity(0.7),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(18),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Identifiers',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: GlassTextField(
-                      controller: id1C,
-                      hint: 'Identifier 1',
-                      icon: Icons.badge_outlined,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 3,
-                    child: GlassTextField(
-                      controller: id1PhoneC,
-                      hint: '079999999',
-                      icon: Icons.contact_phone_outlined,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: GlassTextField(
-                      controller: id2C,
-                      hint: 'Identifier 2',
-                      icon: Icons.badge,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 3,
-                    child: GlassTextField(
-                      controller: id2PhoneC,
-                      hint: '078888888',
-                      icon: Icons.contact_page_outlined,
-                    ),
-                  ),
-                ],
               ),
             ],
           ),
